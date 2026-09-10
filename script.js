@@ -243,6 +243,27 @@ function setupEventListeners() {
     document.getElementById('saveAddon').addEventListener('click', saveEntityAddon);
     document.getElementById('saveDelivery').addEventListener('click', saveEntityDelivery);
     document.getElementById('saveCoupon').addEventListener('click', saveEntityCoupon);
+
+    /* ---------- Listeners do CEP ---------- */
+    const cepInputEl = document.getElementById('cepInput');
+    if (cepInputEl) {
+        cepInputEl.addEventListener('input', (e) => {
+            e.target.value = maskCep(e.target.value);
+        });
+        cepInputEl.addEventListener('blur', (e) => {
+            e.target.value = maskCep(e.target.value);
+        });
+        cepInputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleCepSearch();
+            }
+        });
+    }
+    const btnSearchCep = document.getElementById('btnSearchCep');
+    if (btnSearchCep) {
+        btnSearchCep.addEventListener('click', handleCepSearch);
+    }
 }
 
 function setMinDate() {
@@ -277,10 +298,224 @@ function renderProducts() {
     });
 }
 
+/* ---------- Estado atual de entrega via CEP ---------- */
+let selectedCepData = null;    // cache do retorno ViaCep para o CEP pesquisado
+let cepDeliveryOverride = null; // {rateId, name, price} — sobrescreve o select
+
+/* ---------- CEP: Máscara + Busca ViaCep + Calculo taxa automático ---------- */
+function maskCep(val) {
+    if (!val) return '';
+    const n = String(val).replace(/\D/g, '').slice(0, 8);
+    if (n.length <= 5) return n;
+    return n.slice(0, 5) + '-' + n.slice(5);
+}
+
+async function fetchCepData(cepRaw) {
+    const cep = String(cepRaw || '').replace(/\D/g, '').slice(0, 8);
+    if (cep.length !== 8) throw new Error('CEP incompleto. Informe os 8 dígitos.');
+    const res = await Promise.race([
+        fetch(`https://viacep.com.br/ws/${cep}/json/`, { method: 'GET' }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout ao consultar CEP (tente novamente).')), 10000))
+    ]);
+    if (!res.ok) throw new Error('Erro ao consultar CEP no servidor dos Correios.');
+    const data = await res.json();
+    if (data && data.erro) throw new Error('CEP não encontrado. Verifique o número digitado.');
+    return data; // { cep, logradouro, complemento, bairro, localidade, uf, ibge, gia, ddd, siafi }
+}
+
+/* --- Lat/Long de referência: Centro de Brasília (Eixo Monumental / Rodoviária) --- */
+const BRASILIA_CENTRO_LAT = -15.7801;
+const BRASILIA_CENTRO_LON = -47.9292;
+
+/* --- Calcula a distância de Haversine entre 2 pontos em km --- */
+function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const toRad = v => (v * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+/* --- Tabela fixa de faixas de CEP/Região Administrativa -> taxa (fallback se ViaCep não retornar coordenadas) --- */
+/* Esta tabela usa PREFIXOS DE CEP das RA de Brasília/DF (IBGE). */
+const DF_RA_CEP_PREFIX_RULES = [
+    { prefix: /^70/,               price: 10.00, name: 'Asa Sul / Asa Norte (Plano Piloto)' },
+    { prefix: /^71/,               price: 12.00, name: 'Guará / Vicente Pires / Setor Habitacional' },
+    { prefix: /^72[2-8]/,          price: 15.00, name: 'Lago Sul (QL) / Águas Claras' },
+    { prefix: /^72[01]/,           price: 20.00, name: 'Taguatinga / Ceilândia' },
+    { prefix: /^73[0-3]/,          price: 22.00, name: 'Gama / Riacho Fundo I/II' },
+    { prefix: /^73[4-9]/,          price: 25.00, name: 'Santa Maria / Recanto das Emas' },
+    { prefix: /^74/,               price: 25.00, name: 'Samambaia' },
+    { prefix: /^75[0-7]/,          price: 18.00, name: 'Lago Norte' },
+    { prefix: /^75[8-9]/,          price: 28.00, name: 'Paranoá / Jardins Mangueiral / Itapoã' },
+    { prefix: /^76/,               price: 30.00, name: 'Sobradinho / Sobradinho II' },
+    { prefix: /^77/,               price: 40.00, name: 'Planaltina (Extremo Norte DF)' },
+    { prefix: /^78/,               price: 35.00, name: 'Brazlândia / Cidade Ocidental' },
+    { prefix: /^79/,               price: 35.00, name: 'Brazlândia / Núcleo Bandeirante' }
+];
+
+/* --- Calcula taxa pelo CEP (tenta ViaCep, senão usa tabela de prefixos) --- */
+function calculateDeliveryByCep(cepRaw, viaCepData) {
+    const cep = String(cepRaw || '').replace(/\D/g, '');
+    // 1ª tentativa: se o bairro retornado pelo ViaCep coincidir exatamente com algum dos deliveryRates cadastrados (nomes completos)
+    if (viaCepData && viaCepData.bairro) {
+        const bairro = String(viaCepData.bairro).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const match = deliveryRates.find(r => {
+            const n = String(r.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return (
+                n.includes(bairro) ||
+                bairro.split(/[\s,]/).some(pal => pal.length >= 4 && n.includes(pal)) ||
+                // Exact RA name
+                (n.startsWith(bairro.slice(0, 6)) && bairro.length >= 4)
+            );
+        });
+        if (match) return { rule: 'viacep_match', name: match.name, price: match.price, rateId: match.id };
+    }
+    // 2ª tentativa: CEP fora do DF (UF != DF) → Fora do DF
+    if (viaCepData && viaCepData.uf && String(viaCepData.uf).toUpperCase() !== 'DF') {
+        const out = deliveryRates.find(r => /fora do df|outra regi/i.test(r.name)) ||
+                    deliveryRates.find(r => r.price >= 45);
+        return {
+            rule: 'fora_df',
+            name: viaCepData.localidade ? `${viaCepData.localidade}/${viaCepData.uf} (Fora do DF — Consultar taxa)` : (out ? out.name : 'Fora do DF — Consultar taxa'),
+            price: out ? out.price : 50.00,
+            rateId: out ? out.id : null,
+            alert: '⚠️ O CEP informado está FORA de Brasília/DF. Faremos contato antes de confirmar a entrega!'
+        };
+    }
+    // 3ª tentativa: Tabela de PREFIXOS de CEP (DF)
+    for (const r of DF_RA_CEP_PREFIX_RULES) {
+        if (r.prefix.test(cep)) {
+            const matchRate = deliveryRates.find(dr => {
+                const a = r.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const b = dr.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                return b.includes(a.slice(0, 5)) || a.includes(b.slice(0, 5));
+            });
+            return {
+                rule: 'prefix_df',
+                name: matchRate ? matchRate.name : r.name,
+                price: matchRate ? matchRate.price : r.price,
+                rateId: matchRate ? matchRate.id : null
+            };
+        }
+    }
+    // 4ª (último recurso): Usar faixa de R$ 28 — média de RAs satélites
+    const fallback = deliveryRates.find(r => /outra regi|consulta/i.test(r.name)) || { price: 28, name: 'Região a confirmar (R$ 28)', id: null };
+    return { rule: 'fallback', name: fallback.name, price: fallback.price, rateId: fallback && fallback.id ? fallback.id : null };
+}
+
+function setCepStatus(msg, tipo) {
+    const statusEl = document.getElementById('cepStatusText');
+    if (!statusEl) return;
+    statusEl.className = 'cep-status ' + (tipo || '');
+    statusEl.textContent = msg || '';
+}
+
+function setCepHelpWhatsAppLink() {
+    const link = document.getElementById('cepWhatsAppHelp');
+    if (!link) return;
+    const texto = encodeURIComponent('Olá! Preciso de ajuda para calcular a taxa de entrega do meu pedido.');
+    link.href = `https://wa.me/${whatsappNumber}?text=${texto}`;
+    link.target = '_blank';
+    link.rel = 'noopener';
+}
+
+async function handleCepSearch() {
+    const cepInput = document.getElementById('cepInput');
+    const btn = document.getElementById('btnSearchCep');
+    const autoFields = document.getElementById('cepAutoFields');
+    const logradouroEl = document.getElementById('cepLogradouro');
+    const complementoEl = document.getElementById('cepComplemento');
+    const bairroEl = document.getElementById('cepBairro');
+    const cidadeEl = document.getElementById('cepCidade');
+    const deliveryDisplay = document.getElementById('cepDeliveryDisplay');
+    const freteLabel = document.getElementById('cepFreteCalculado');
+    const neighborhoodSelect = document.getElementById('neighborhoodSelect');
+
+    const cepRaw = (cepInput && cepInput.value) || '';
+    const cepLimpo = cepRaw.replace(/\D/g, '');
+    if (cepLimpo.length !== 8) {
+        setCepStatus('⚠️ Informe os 8 dígitos do CEP.', 'error');
+        return;
+    }
+
+    setCepStatus('🔍 Buscando CEP e calculando frete...', 'loading');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Buscando...'; }
+
+    try {
+        const dados = await fetchCepData(cepRaw);
+        selectedCepData = dados;
+
+        // 1) Preenche campos de endereço
+        if (autoFields) autoFields.style.display = 'block';
+        if (logradouroEl) logradouroEl.value = dados.logradouro || '';
+        if (complementoEl) complementoEl.value = dados.complemento || '';
+        if (bairroEl) bairroEl.value = dados.bairro || '';
+        if (cidadeEl) {
+            cidadeEl.value =
+                (dados.localidade && dados.uf) ? `${dados.localidade} / ${dados.uf}` :
+                (dados.localidade || 'Brasília / DF');
+        }
+        // 2) Monta sugestão de taxa (por CEP)
+        const taxa = calculateDeliveryByCep(cepLimpo, dados);
+        cepDeliveryOverride = { cep: cepLimpo, rateId: taxa.rateId, name: taxa.name, price: taxa.price };
+        if (deliveryDisplay) deliveryDisplay.style.display = 'flex';
+        if (freteLabel) freteLabel.textContent = formatCurrency(taxa.price);
+
+        // 3) Sincroniza o select com a RA encontrada (se tem match por rateId)
+        if (neighborhoodSelect && taxa.rateId) {
+            neighborhoodSelect.value = taxa.rateId;
+        } else if (neighborhoodSelect) {
+            // Não tem match exato — o usuário pode ajustar manualmente depois
+            neighborhoodSelect.value = '';
+        }
+
+        // 4) Atualiza o resumo do pedido (taxa = taxa calculada)
+        updateCartTotals();
+
+        // 5) Mensagem final
+        if (taxa.alert) {
+            setCepStatus(taxa.alert, 'warn');
+        } else {
+            setCepStatus(
+                `✅ CEP ${maskCep(cepLimpo)} encontrado em "${taxa.name}". Frete calculado: ${formatCurrency(taxa.price)}.`,
+                'success'
+            );
+        }
+
+        // 6) Sugere preencher o endereço do destinatário automaticamente
+        const addrInput = document.getElementById('receiverAddress');
+        if (addrInput && dados && (!addrInput.value || addrInput.value.length < 10)) {
+            const parts = [
+                dados.logradouro ? `${dados.logradouro}${dados.complemento ? ' (' + dados.complemento + ')' : ''}` : '',
+                dados.bairro ? `Bairro: ${dados.bairro}` : '',
+                `${dados.localidade || 'Brasília'}/${dados.uf || 'DF'} — CEP ${maskCep(cepLimpo)}`
+            ].filter(Boolean);
+            addrInput.value = parts.join('\n');
+        }
+    } catch (err) {
+        console.error('handleCepSearch', err);
+        setCepStatus('❌ ' + (err.message || err), 'error');
+        if (autoFields) autoFields.style.display = 'none';
+        if (deliveryDisplay) deliveryDisplay.style.display = 'none';
+        cepDeliveryOverride = null;
+        updateCartTotals();
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔍 Buscar'; }
+    }
+}
+
+/* ---------- Fim: CEP ---------- */
+
 function renderDeliveryOptions() {
     const select = document.getElementById('neighborhoodSelect');
-    const currentValue = select.value;
-    select.innerHTML = '<option value="">Selecione o bairro...</option>';
+    const currentValue = select && select.value;
+    select.innerHTML = '<option value="">Selecione a região no DF...</option>';
     deliveryRates.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d.id;
@@ -447,10 +682,18 @@ function updateCartSummary() {
     const subtotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
 
     let delivery = 0;
-    const neighborhoodId = parseInt(document.getElementById('neighborhoodSelect').value);
-    if (neighborhoodId) {
-        const d = deliveryRates.find(x => x.id === neighborhoodId);
-        delivery = d ? d.price : 0;
+    let deliveryName = '';
+
+    if (cepDeliveryOverride) {
+        delivery = cepDeliveryOverride.price || 0;
+        deliveryName = cepDeliveryOverride.name || 'Frete calculado por CEP';
+    } else {
+        const neighborhoodId = parseInt(document.getElementById('neighborhoodSelect').value);
+        if (neighborhoodId) {
+            const d = deliveryRates.find(x => x.id === neighborhoodId);
+            delivery = d ? d.price : 0;
+            deliveryName = d ? d.name : '';
+        }
     }
 
     let discount = 0;
@@ -470,10 +713,16 @@ function updateCartSummary() {
     const total = subtotal + delivery - discount;
 
     document.getElementById('summarySubtotal').textContent = formatCurrency(subtotal);
-    document.getElementById('summaryDelivery').textContent = delivery === 0 ? (neighborhoodId ? 'Grátis' : 'R$ 0,00') : formatCurrency(delivery);
+    const hasDelivery = cepDeliveryOverride || parseInt(document.getElementById('neighborhoodSelect').value);
+    document.getElementById('summaryDelivery').textContent = !hasDelivery
+        ? 'Informe o CEP ou escolha a região'
+        : (delivery === 0 ? 'Grátis' : formatCurrency(delivery));
     document.getElementById('summaryTotal').textContent = formatCurrency(Math.max(0, total));
     document.getElementById('pixTotalValue').textContent = 'Total: ' + formatCurrency(Math.max(0, total));
 }
+
+/* Alias usado no handleCepSearch (mantém compatibilidade) */
+const updateCartTotals = updateCartSummary;
 
 function handlePaymentChange() {
     const selected = document.querySelector('input[name="payment"]:checked');
@@ -558,7 +807,8 @@ function finishOrder() {
     paymentRadios.forEach(r => { if (r.checked) payment = r.value; });
 
     const errors = [];
-    if (!neighborhoodId) errors.push('Selecione o bairro de entrega.');
+    const temFreteCalculado = cepDeliveryOverride || neighborhoodId;
+    if (!temFreteCalculado) errors.push('Informe o CEP para calcular o frete OU escolha a R.A. manualmente.');
     if (!deliveryDate) errors.push('Selecione a data de entrega.');
     if (!deliveryTime) errors.push('Selecione o horário de entrega.');
     if (!buyerName) errors.push('Informe seu nome.');
@@ -574,9 +824,25 @@ function finishOrder() {
         return;
     }
 
-    const d = deliveryRates.find(x => x.id === neighborhoodId);
+    let deliveryName;
+    let deliveryPrice;
+    let metodoFrete;
+    let cepEntrega;
+
+    if (cepDeliveryOverride) {
+        deliveryName = cepDeliveryOverride.name;
+        deliveryPrice = cepDeliveryOverride.price;
+        metodoFrete = 'automático por CEP (ViaCep)';
+        cepEntrega = cepDeliveryOverride.cep;
+    } else {
+        const d = deliveryRates.find(x => x.id === neighborhoodId);
+        deliveryName = d ? d.name : 'Região selecionada';
+        deliveryPrice = d ? d.price : 0;
+        metodoFrete = 'manual selecionado';
+        cepEntrega = null;
+    }
+
     const subtotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
-    const deliveryPrice = d ? d.price : 0;
     let discount = 0;
     if (appliedCoupon) {
         discount = appliedCoupon.type === 'percent' ? subtotal * (appliedCoupon.value / 100) : appliedCoupon.value;
@@ -605,7 +871,11 @@ function finishOrder() {
     });
     message += '\n────────────────────\n';
     message += `💸 *Subtotal:* ${formatCurrency(subtotal)}\n`;
-    message += `🚚 *Frete (${d.name}):* ${deliveryPrice === 0 ? 'Grátis' : formatCurrency(deliveryPrice)}\n`;
+    message += `🚚 *Frete (${deliveryName}):* ${deliveryPrice === 0 ? 'Grátis' : formatCurrency(deliveryPrice)}\n`;
+    if (cepEntrega) {
+        message += `📮 *CEP:* ${maskCep(cepEntrega)}\n`;
+    }
+    message += `🧮 *Cálculo do frete:* ${metodoFrete}\n`;
     if (appliedCoupon) {
         message += `🎟️ *Cupom ${appliedCoupon.code}:* -${formatCurrency(discount)}\n`;
     }
@@ -613,7 +883,7 @@ function finishOrder() {
     message += '\n────────────────────\n';
     message += `📅 *Entrega:* ${dateFormatted} às ${timeFormatted}\n`;
     message += `📍 *Cidade:* Brasília — DF\n`;
-    message += `🗺️ *Região Administrativa (R.A.):* ${d.name}\n\n`;
+    message += `🗺️ *Região Administrativa (R.A.):* ${deliveryName}\n\n`;
     message += `👤 *Comprador:*\n`;
     message += `   Nome: ${buyerName}\n`;
     message += `   WhatsApp: ${buyerWhatsapp}\n\n`;
@@ -1533,6 +1803,7 @@ deleteEntity = deleteEntityAsyncOverride;
 
 document.addEventListener('DOMContentLoaded', async function () {
     init(); // inicializa o resto do site como sempre
+    setCepHelpWhatsAppLink(); // inicializa link de ajuda do CEP
     bindFirebaseUI();
     const fbOk = await bootstrapFirebase();
     if (fbOk) {
