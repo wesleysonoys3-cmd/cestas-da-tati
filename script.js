@@ -80,31 +80,34 @@ const DEFAULT_ADDONS = [
 ];
 
 const DEFAULT_DELIVERY = [
-    /* ---------- ÁREAS CENTRAIS / PLANO PILOTO (mais perto) ---------- */
-    { id: 1,  name: 'Brasília / Asa Sul (SQSW / SQS)',                 price: 10.00 },
-    { id: 2,  name: 'Brasília / Asa Norte (SQNW / SQN)',                price: 10.00 },
-    { id: 3,  name: 'Brasília / Setor de Hotéis (SHS / SHN)',           price: 12.00 },
-    { id: 4,  name: 'Brasília / Eixão (SIA / SIG / SCES)',              price: 15.00 },
-    { id: 5,  name: 'Lago Sul (QL / QL 01 a 30)',                       price: 15.00 },
-    { id: 6,  name: 'Lago Norte (Qlago Norte / Norte Parque)',          price: 18.00 },
-    { id: 7,  name: 'Guará (QI / QII / QN)',                            price: 15.00 },
-    { id: 8,  name: 'Águas Claras (Avenida Castelo Branco / QS)',       price: 18.00 },
-    { id: 9,  name: 'Gama (Satélite Gama - Região Central)',            price: 22.00 },
-    { id: 10, name: 'Taguatinga (QNJ / Taguatinga Sul)',                price: 20.00 },
-    { id: 11, name: 'Ceilândia (QNN / Ceilândia Centro)',               price: 25.00 },
-    { id: 12, name: 'Samambaia (QSB / Samambaia Norte)',                price: 25.00 },
-    { id: 13, name: 'Santa Maria (QRS / Santa Maria 1 a 5)',            price: 28.00 },
-    { id: 14, name: 'Brazlândia (Região Norte - Distante)',             price: 35.00 },
-    { id: 15, name: 'Planaltina (Extremo Norte - DF)',                  price: 40.00 },
-    { id: 16, name: 'Sobradinho / Sobradinho II',                       price: 30.00 },
-    { id: 17, name: 'Paranoá / Jardins Mangueiral / Itapoã',             price: 28.00 },
-    { id: 18, name: 'Vicente Pires / Setor Habitacional Vicente Pires', price: 22.00 },
-    { id: 19, name: 'Riacho Fundo I / II (QRF)',                        price: 22.00 },
-    { id: 20, name: 'Outra região / Fora do DF — Consultar taxa',       price: 50.00 },
-    { id: 99, name: '✅ Retirada na Tatiê (Sem taxa de entrega)',       price: 0.00  }
+    /* ---------- BASE: NÚCLEO BANDEIRANTE / DF ---------- */
+    /* Taxas calculadas por distância rodoviária REAL de NB -> RA (2026) */
+    { id: 1,  name: '📍 Retirada na loja · Núcleo Bandeirante (Grátis)',     price: 0.00  },
+    { id: 2,  name: 'Núcleo Bandeirante (Entrega na região)',                price: 15.00 },
+    { id: 3,  name: 'Riacho Fundo I / II (QRF)',                              price: 15.00 },
+    { id: 4,  name: 'Gama (Satélite Gama - Região Central)',                  price: 18.00 },
+    { id: 5,  name: 'Santa Maria (QRS / Santa Maria 1 a 5)',                  price: 18.00 },
+    { id: 6,  name: 'Recanto das Emas (QRE)',                                 price: 20.00 },
+    { id: 7,  name: 'Samambaia (QSB / Samambaia Norte/Sul)',                  price: 22.00 },
+    { id: 8,  name: 'Vicente Pires / Setor Habitacional Vicente Pires',       price: 22.00 },
+    { id: 9,  name: 'Ceilândia (QNN / Ceilândia Centro)',                     price: 25.00 },
+    { id: 10, name: 'Taguatinga (QNJ / Taguatinga Sul)',                      price: 26.00 },
+    { id: 11, name: 'Águas Claras (Avenida Castelo Branco / QS)',             price: 28.00 },
+    { id: 12, name: 'Guará (QI / QII / QN)',                                  price: 30.00 },
+    { id: 13, name: 'Eixão / SIA / SIG / SCES (Setores centrais)',            price: 30.00 },
+    { id: 14, name: 'Lago Sul (QL / QL 01 a 30)',                             price: 32.00 },
+    { id: 15, name: 'Brasília / Asa Sul (SQSW / SQS)',                        price: 32.00 },
+    { id: 16, name: 'Brasília / Asa Norte (SQNW / SQN)',                      price: 32.00 },
+    { id: 17, name: 'Setor de Hotéis e SHN / SHS',                            price: 32.00 },
+    { id: 18, name: 'Paranoá / Jardins Mangueiral / Itapoã',                  price: 36.00 },
+    { id: 19, name: 'Lago Norte (Qlago Norte / Norte Parque)',                price: 38.00 },
+    { id: 20, name: 'Brazlândia (Região Sudoeste)',                           price: 42.00 },
+    { id: 21, name: 'Sobradinho / Sobradinho II',                             price: 48.00 },
+    { id: 22, name: 'Planaltina (Extremo Norte DF)',                          price: 58.00 },
+    { id: 23, name: 'Outra região / Fora do DF — Consultar taxa',             price: 70.00 }
 ];
 
-const DEFAULT_DELIVERY_RESET_FLAG = 'deliveryDefaultsVersion_DF_Brasilia_2026';
+const DEFAULT_DELIVERY_RESET_FLAG = 'deliveryDefaultsVersion_DF_NucleoBandeirante_2026_v2';
 
 const DEFAULT_COUPONS = [
     { id: 1, code: 'TATI10', type: 'percent', value: 10, active: true },
@@ -323,9 +326,10 @@ async function fetchCepData(cepRaw) {
     return data; // { cep, logradouro, complemento, bairro, localidade, uf, ibge, gia, ddd, siafi }
 }
 
-/* --- Lat/Long de referência: Centro de Brasília (Eixo Monumental / Rodoviária) --- */
-const BRASILIA_CENTRO_LAT = -15.7801;
-const BRASILIA_CENTRO_LON = -47.9292;
+/* --- Lat/Long de referência: Loja FÍSICA = NÚCLEO BANDEIRANTE, Brasília/DF --- */
+/* Ponto exato: Região Administrativa do Núcleo Bandeirante (saída principal) */
+const BRASILIA_CENTRO_LAT = -15.7333;
+const BRASILIA_CENTRO_LON = -48.0778;
 
 /* --- Calcula a distância de Haversine entre 2 pontos em km --- */
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -342,21 +346,27 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 /* --- Tabela fixa de faixas de CEP/Região Administrativa -> taxa (fallback se ViaCep não retornar coordenadas) --- */
-/* Esta tabela usa PREFIXOS DE CEP das RA de Brasília/DF (IBGE). */
+/* ORIGEM BASE: NÚCLEO BANDEIRANTE / DF. Prefixos oficiais IBGE 2026. */
 const DF_RA_CEP_PREFIX_RULES = [
-    { prefix: /^70/,               price: 10.00, name: 'Asa Sul / Asa Norte (Plano Piloto)' },
-    { prefix: /^71/,               price: 12.00, name: 'Guará / Vicente Pires / Setor Habitacional' },
-    { prefix: /^72[2-8]/,          price: 15.00, name: 'Lago Sul (QL) / Águas Claras' },
-    { prefix: /^72[01]/,           price: 20.00, name: 'Taguatinga / Ceilândia' },
-    { prefix: /^73[0-3]/,          price: 22.00, name: 'Gama / Riacho Fundo I/II' },
-    { prefix: /^73[4-9]/,          price: 25.00, name: 'Santa Maria / Recanto das Emas' },
-    { prefix: /^74/,               price: 25.00, name: 'Samambaia' },
-    { prefix: /^75[0-7]/,          price: 18.00, name: 'Lago Norte' },
-    { prefix: /^75[8-9]/,          price: 28.00, name: 'Paranoá / Jardins Mangueiral / Itapoã' },
-    { prefix: /^76/,               price: 30.00, name: 'Sobradinho / Sobradinho II' },
-    { prefix: /^77/,               price: 40.00, name: 'Planaltina (Extremo Norte DF)' },
-    { prefix: /^78/,               price: 35.00, name: 'Brazlândia / Cidade Ocidental' },
-    { prefix: /^79/,               price: 35.00, name: 'Brazlândia / Núcleo Bandeirante' }
+    { prefix: /^718/,                price: 15.00, name: 'Núcleo Bandeirante (Região Central, saída da loja)' },
+    { prefix: /^78[0-4]/,            price: 15.00, name: 'Núcleo Bandeirante (Entrega na região)' },
+    { prefix: /^733[0-3]/,           price: 15.00, name: 'Riacho Fundo I / II (mais próximo)' },
+    { prefix: /^73[0-2]/,            price: 18.00, name: 'Gama (Satélite Gama)' },
+    { prefix: /^73[6-9]/,            price: 18.00, name: 'Santa Maria / QRS' },
+    { prefix: /^73[4-5]/,            price: 20.00, name: 'Recanto das Emas' },
+    { prefix: /^74/,                 price: 22.00, name: 'Samambaia (QSB)' },
+    { prefix: /^79/,                 price: 22.00, name: 'Vicente Pires / Jardim Botânico / Arniqueira' },
+    { prefix: /^71[0-7]/,            price: 22.00, name: 'Vicente Pires (Setor Hab.)' },
+    { prefix: /^720/,                price: 25.00, name: 'Ceilândia (Centro)' },
+    { prefix: /^72[19]/,             price: 26.00, name: 'Taguatinga (QNJ)' },
+    { prefix: /^72[2-8]/,            price: 28.00, name: 'Águas Claras (QS)' },
+    { prefix: /^719/,                price: 30.00, name: 'Guará (QI / QII)' },
+    { prefix: /^70/,                 price: 32.00, name: 'Asa Sul / Asa Norte / Plano Piloto' },
+    { prefix: /^75[0-7]/,            price: 38.00, name: 'Lago Norte (QLN)' },
+    { prefix: /^75[8-9]/,            price: 36.00, name: 'Paranoá / Jardins Mangueiral / Itapoã' },
+    { prefix: /^78[5-9]/,            price: 42.00, name: 'Brazlândia (Sudoeste DF)' },
+    { prefix: /^76/,                 price: 48.00, name: 'Sobradinho / Sobradinho II' },
+    { prefix: /^77/,                 price: 58.00, name: 'Planaltina (Extremo Norte DF)' }
 ];
 
 /* --- Calcula taxa pelo CEP (tenta ViaCep, senão usa tabela de prefixos) --- */
@@ -383,7 +393,7 @@ function calculateDeliveryByCep(cepRaw, viaCepData) {
         return {
             rule: 'fora_df',
             name: viaCepData.localidade ? `${viaCepData.localidade}/${viaCepData.uf} (Fora do DF — Consultar taxa)` : (out ? out.name : 'Fora do DF — Consultar taxa'),
-            price: out ? out.price : 50.00,
+            price: out ? out.price : 70.00,
             rateId: out ? out.id : null,
             alert: '⚠️ O CEP informado está FORA de Brasília/DF. Faremos contato antes de confirmar a entrega!'
         };
@@ -515,7 +525,7 @@ async function handleCepSearch() {
 function renderDeliveryOptions() {
     const select = document.getElementById('neighborhoodSelect');
     const currentValue = select && select.value;
-    select.innerHTML = '<option value="">Selecione a região no DF...</option>';
+    select.innerHTML = '<option value="">Selecione sua R.A. de entrega no DF...</option>';
     deliveryRates.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d.id;
