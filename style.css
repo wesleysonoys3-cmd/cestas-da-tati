@@ -1712,7 +1712,328 @@ textarea.form-input {
 .upload-status-text.error { color: var(--color-danger); }
 .upload-status-text.success { color: var(--color-success); }
 
+/* ========== REGRAS GLOBAIS DE RESPONSIVIDADE (mobile-first) ========== */
+
+/* ====== AJUSTES BASE / TELAS MUITO PEQUENAS (até 360px) ====== */
+@media (max-width: 360px) {
+    .container {
+        padding: 0 12px;
+    }
+
+    body {
+        font-size: 14px;
+    }
+
+    .logo-mini {
+        font-size: 15px;
+    }
+
+    .logo-mini-sub {
+        display: block;
+        font-size: 9px;
+        letter-spacing: 0.5px;
+        margin-top: 2px;
+    }
+
+    .status-badge {
+        display: none;
+    }
+
+    .header-top {
+        gap: 8px;
+    }
+
+    .hero {
+        padding: 32px 0 40px;
+    }
+
+    .hero-seal-ring {
+        width: 90px;
+        height: 90px;
+    }
+
+    .hero-seal-letter {
+        font-size: 36px;
+    }
+
+    .hero-title {
+        letter-spacing: 5px;
+    }
+
+    .hero-subtitle {
+        letter-spacing: 3px;
+    }
+
+    .hero-divider {
+        max-width: 260px;
+    }
+
+    .hero-welcome {
+        font-size: 13px;
+        max-width: 100%;
+    }
+
+    .hero-cta {
+        padding: 12px 22px;
+        font-size: 13.5px;
+        width: 100%;
+        max-width: 280px;
+        text-align: center;
+    }
+
+    .section-title {
+        font-size: 20px;
+        margin-bottom: 18px;
+    }
+
+    .product-grid {
+        gap: 14px;
+    }
+
+    .product-card-body {
+        padding: 12px;
+    }
+
+    .product-card-name {
+        font-size: 15px;
+    }
+
+    .product-card-price {
+        font-size: 15px;
+    }
+
+    .product-card-see-more {
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    .modal-content {
+        padding: 18px 14px 28px;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        max-height: 94vh;
+    }
+
+    .modal-close {
+        top: 10px;
+        right: 10px;
+        width: 32px;
+        height: 32px;
+    }
+
+    .cart-title {
+        font-size: 18px;
+        margin-right: 36px;
+    }
+
+    .cart-item {
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .cart-item-image {
+        width: 62px;
+        height: 62px;
+    }
+
+    .cart-item-name {
+        font-size: 14px;
+    }
+
+    .checkout-subtitle {
+        font-size: 14.5px;
+    }
+
+    .form-input,
+    .form-select {
+        padding: 11px 12px;
+        font-size: 14px;
+    }
+
+    .form-label {
+        font-size: 12.5px;
+    }
+
+    .payment-options {
+        grid-template-columns: 1fr;
+    }
+
+    .btn-finish-order {
+        padding: 14px 20px;
+        font-size: 14px;
+    }
+
+    .coupon-row {
+        flex-direction: column;
+    }
+
+    .btn-coupon {
+        width: 100%;
+        padding: 12px;
+    }
+
+    .cart-float {
+        width: 54px;
+        height: 54px;
+        bottom: 14px;
+        right: 14px;
+    }
+
+    .cart-float svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    .cart-count {
+        top: -4px;
+        right: -4px;
+        min-width: 18px;
+        height: 18px;
+        font-size: 10px;
+    }
+
+    .leaf-1, .leaf-2, .leaf-3, .leaf-4 {
+        display: none;
+    }
+}
+
+/* ====== TELAS PEQUENAS (361px — 480px) ====== */
+@media (min-width: 361px) and (max-width: 480px) {
+    .logo-mini-sub {
+        display: inline;
+    }
+
+    .status-badge {
+        font-size: 10px;
+        padding: 4px 8px;
+        gap: 5px;
+    }
+
+    .hero-seal-ring {
+        width: 100px;
+        height: 100px;
+    }
+
+    .hero-seal-letter {
+        font-size: 40px;
+    }
+
+    .section-title {
+        font-size: 22px;
+    }
+
+    .modal-content {
+        padding: 20px 16px 30px;
+    }
+}
+
+/* ====== TELAS PEQUENAS / CELULARES MAIORES (até 480px) ====== */
+@media (max-width: 480px) {
+    /* Header */
+    .btn-admin-link {
+        width: 34px;
+        height: 34px;
+        font-size: 13px;
+    }
+
+    /* Linhas de formulários viram colunas em telas estreitas */
+    .form-group.row {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    /* CEP — empilhar input + botão */
+    .cep-row {
+        flex-direction: column;
+    }
+
+    #btnSearchCep {
+        width: 100%;
+        padding: 12px;
+    }
+
+    .cep-delivery-display {
+        flex-direction: column;
+        text-align: center;
+        gap: 6px;
+    }
+
+    /* Quantidade + botão adicionar no modal produto */
+    .quantity-row {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 12px;
+    }
+
+    .quantity-control {
+        justify-content: center;
+    }
+
+    .btn-add-cart {
+        justify-content: center;
+        padding: 14px 16px !important;
+    }
+
+    /* Resumo do carrinho */
+    .summary-row {
+        font-size: 13.5px;
+    }
+
+    .summary-row.total-row {
+        font-size: 17px;
+    }
+
+    .summary-row.total-row span:last-child {
+        font-size: 19px !important;
+    }
+
+    /* Checkout: pagamento 1 coluna */
+    .payment-options {
+        grid-template-columns: 1fr;
+    }
+
+    /* Itens carrinho */
+    .cart-item-remove {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
+
+    /* Pix box responsivo */
+    .pix-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .pix-key-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .btn-copy-pix {
+        width: 100%;
+    }
+
+    .btn-finish-order {
+        padding: 15px 18px;
+        font-size: 15px;
+    }
+}
+
+/* ====== TELAS TABLETS PEQUENOS / CELULARES GRANDES (481px — 640px) ====== */
+@media (min-width: 481px) and (max-width: 640px) {
+    .product-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+}
+
+/* ====== TELAS TABLETS (640px+) ====== */
 @media (min-width: 640px) {
+    .container {
+        padding: 0 20px;
+    }
+
     .product-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -1729,9 +2050,94 @@ textarea.form-input {
         max-height: 88vh;
         border-radius: var(--radius-xl);
         margin: 24px;
+        padding: 28px 28px 36px;
+    }
+
+    .modal-product {
+        max-width: 640px;
+    }
+
+    .modal-cart {
+        max-width: 640px;
+    }
+
+    /* Hero ajuste tablet */
+    .hero {
+        padding: 52px 0 64px;
+    }
+
+    .hero-seal-ring {
+        width: 120px;
+        height: 120px;
+    }
+
+    .hero-seal-letter {
+        font-size: 48px;
+    }
+
+    .section-title {
+        font-size: 24px;
     }
 }
 
+/* ====== TELAS TABLETS MAIORES / NOTEBOOKS PEQUENOS (768px+) ====== */
+@media (min-width: 768px) {
+    body {
+        font-size: 15.5px;
+    }
+
+    .hero {
+        padding: 60px 0 72px;
+    }
+
+    .hero-seal-ring {
+        width: 130px;
+        height: 130px;
+    }
+
+    .hero-seal-letter {
+        font-size: 52px;
+    }
+
+    .hero-welcome {
+        max-width: 520px;
+        font-size: 15px;
+    }
+
+    .section-title {
+        font-size: 26px;
+        margin-bottom: 26px;
+    }
+
+    /* Checkout duas colunas opcional */
+    .payment-options {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* Produtos: 2 colunas mantidas, mas com gap maior */
+    .product-grid {
+        gap: 22px;
+    }
+
+    .header-top {
+        gap: 20px;
+    }
+
+    .logo-mini {
+        font-size: 20px;
+    }
+
+    .logo-mini-sub {
+        font-size: 12px;
+    }
+
+    .status-badge {
+        font-size: 12px;
+        padding: 6px 14px;
+    }
+}
+
+/* ====== TELAS DESKTOP (960px+) ====== */
 @media (min-width: 960px) {
     body {
         padding-bottom: 100px;
@@ -1747,7 +2153,7 @@ textarea.form-input {
     }
 
     .header {
-        padding: 28px 0 36px;
+        padding: 20px 0 24px;
     }
 
     .logo {
@@ -1761,7 +2167,7 @@ textarea.form-input {
     }
 
     .section-title {
-        font-size: 26px;
+        font-size: 28px;
     }
 
     .cart-float {
@@ -1775,13 +2181,234 @@ textarea.form-input {
         width: 32px;
         height: 32px;
     }
-}
 
-@media (min-width: 1200px) {
-    .product-grid {
-        grid-template-columns: repeat(4, 1fr);
+    .cart-count {
+        top: -4px;
+        right: -4px;
+        min-width: 26px;
+        height: 26px;
+        font-size: 13px;
+    }
+
+    /* Modais desktop */
+    .modal-product {
+        max-width: 720px;
+    }
+
+    .modal-cart {
+        max-width: 720px;
+    }
+
+    .product-detail {
+        display: grid;
+        grid-template-columns: 1.1fr 1fr;
+        gap: 28px;
+    }
+
+    .product-detail-image {
+        aspect-ratio: 4 / 5;
+        margin-bottom: 0;
+    }
+
+    .modal-content {
+        padding: 36px 36px 44px;
     }
 }
+
+/* ====== TELAS DESKTOP GRANDES (1200px+) ====== */
+@media (min-width: 1200px) {
+    .container {
+        max-width: 1280px;
+    }
+
+    .product-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 28px;
+    }
+
+    .section-title {
+        font-size: 30px;
+    }
+
+    .hero-title {
+        font-size: 72px;
+    }
+
+    .hero-subtitle {
+        font-size: 18px;
+        letter-spacing: 6px;
+    }
+
+    .hero-slogan {
+        font-size: 22px;
+    }
+
+    .hero-welcome {
+        font-size: 16px;
+        max-width: 560px;
+    }
+
+    .hero-seal-ring {
+        width: 140px;
+        height: 140px;
+    }
+
+    .hero-seal-letter {
+        font-size: 56px;
+    }
+}
+
+/* ====== TELAS MUITO GRANDES / 4K (1600px+) ====== */
+@media (min-width: 1600px) {
+    .container {
+        max-width: 1400px;
+    }
+
+    body {
+        font-size: 16px;
+    }
+
+    .product-grid {
+        gap: 32px;
+    }
+}
+
+/* ====== AJUSTE PARA NOTCH / iOS SAFARI (viewport-fit=cover) ====== */
+@supports (padding: max(0px)) {
+    body {
+        padding-left: max(0px, env(safe-area-inset-left));
+        padding-right: max(0px, env(safe-area-inset-right));
+        padding-bottom: max(80px, env(safe-area-inset-bottom));
+    }
+
+    .cart-float {
+        right: max(14px, env(safe-area-inset-right));
+        bottom: max(14px, env(safe-area-inset-bottom));
+    }
+
+    .header {
+        padding-top: max(14px, env(safe-area-inset-top));
+    }
+}
+
+/* ====== AJUSTES PARA LANDSCAPE (celulares deitados, max 820px) ====== */
+@media (max-height: 520px) and (orientation: landscape) {
+    .hero {
+        padding: 24px 0 36px;
+    }
+
+    .hero-seal {
+        margin-bottom: 0;
+    }
+
+    .hero-seal-ring {
+        width: 80px;
+        height: 80px;
+    }
+
+    .hero-seal-letter {
+        font-size: 32px;
+    }
+
+    .hero-title {
+        font-size: 42px;
+        letter-spacing: 6px;
+    }
+
+    .hero-welcome {
+        display: none;
+    }
+
+    .cart-float {
+        width: 52px;
+        height: 52px;
+    }
+
+    .cart-float svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    .modal-content {
+        max-height: 96vh;
+        padding: 18px 24px 24px;
+    }
+
+    .modal-product {
+        max-width: 92vw;
+    }
+}
+
+/* ====== CORREÇÃO UNIVERSAL: overflow / quebra de texto em telas estreitas ====== */
+.product-card-name,
+.product-detail-name,
+.cart-title,
+.section-title,
+.hero-title,
+.logo-mini,
+.summary-row span,
+.summary-row,
+.checkout-subtitle,
+.admin-title,
+.admin-list-name,
+.pix-key,
+.cart-item-name,
+.cart-item-notes,
+.cart-item-addons {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+}
+
+img, picture, video, canvas, svg {
+    display: block;
+    max-width: 100%;
+}
+
+input, button, textarea, select {
+    font: inherit;
+    max-width: 100%;
+}
+
+/* ====== CORREÇÃO: imagens nunca estouram container ====== */
+.product-image,
+.product-detail-image,
+.cart-item-image,
+.admin-list-image,
+.image-preview {
+    max-width: 100%;
+}
+
+/* ====== CORREÇÕES ADICIONAIS DE RESPONSIVIDADE GERAL ====== */
+button,
+.qty-btn,
+.modal-close,
+.btn-admin-link,
+.btn-copy-pix,
+.btn-coupon,
+.btn-tiny,
+.cart-item-remove {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+.admin-tabs {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.admin-tabs::-webkit-scrollbar { display: none; }
+
+.admin-tab {
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.checkout-section > * {
+    min-width: 0;
+}
+
+/* ========== FIM: REGRA GERAL RESPONSIVIDADE ========== */
 
 /* ========== BLOCO CEP — FRETE AUTOMÁTICO ========== */
 .cep-box {
