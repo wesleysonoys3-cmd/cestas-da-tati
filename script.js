@@ -1280,34 +1280,55 @@ async function saveEntityProductAsyncOverride() {
                 saveBtn.textContent = '⌛ Processando...';
             }
 
-            if (firebaseEnabledRuntime && window.FirebaseAPI) {
+            if (firebaseEnabledRuntime && window.FirebaseAPI && !forceLocalStorageMode) {
                 if (statusEl) statusEl.style.display = 'flex';
                 if (progressText) {
                     progressText.className = 'upload-status-text';
                     progressText.textContent = 'Enviando imagem para o Firebase...';
                 }
+                let firebaseUploadOk = false;
                 try {
                     const up = await Promise.race([
                         window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
                             if (progressFill) progressFill.style.width = pct + '%';
                             if (progressText) progressText.textContent = `Enviando imagem... ${pct}%`;
                         }),
-                        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout no upload do Firebase (verifique a internet e as Regras).')), 45000))
+                        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout — o Storage não respondeu em 8s. Usaremos a foto local.')), 8000))
                     ]);
                     image = up.url;
                     pImageInput.value = image;
+                    firebaseUploadOk = true;
                     if (progressText) {
                         progressText.className = 'upload-status-text success';
                         progressText.textContent = '✅ Imagem enviada! Salvando cesta...';
                     }
                 } catch (err) {
-                    console.error(err);
+                    // FIREBASE FALHOU → FALLBACK AUTOMÁTICO PARA BASE64 LOCAL (sem travar!)
+                    console.warn('Firebase upload falhou, usando Base64 local.', err);
+                    firebaseUploadOk = false;
                     if (progressText) {
                         progressText.className = 'upload-status-text error';
-                        progressText.textContent = '❌ Erro Firebase: ' + err.message;
+                        progressText.textContent = '⚠️ Nuvem indisponível: salvando foto no seu navegador...';
                     }
-                    alert('Não foi possível enviar a imagem para o Firebase.\n\nDetalhes: ' + err.message + '\n\nDica 1: publique as Regras do Storage.\nDica 2: cheque sua internet.');
-                    return;
+                    // Tenta gerar Base64 da foto pra salvar localmente
+                    try {
+                        if (!pendingBase64Image) {
+                            pendingBase64Image = await Promise.race([
+                                compressImageToBase64(pendingImageFile, 1200, 0.78),
+                                new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout ao preparar a foto.')), 20000))
+                            ]);
+                        }
+                        image = pendingBase64Image;
+                        pImageInput.value = '';
+                        if (progressText) {
+                            progressText.className = 'upload-status-text success';
+                            progressText.textContent = `✅ Foto salva localmente! (~${kbOfBase64(image)} KB). Dica: publique as Regras do Storage/Firestore pra nuvem funcionar também.`;
+                        }
+                    } catch (b64Err) {
+                        console.error('Fallback Base64 também falhou:', b64Err);
+                        alert('A imagem não pôde ser enviada para o Firebase e também não pôde ser preparada localmente.\nErro: ' + b64Err.message);
+                        return;
+                    }
                 }
             } else {
                 if (!pendingBase64Image) {
@@ -1364,18 +1385,18 @@ async function saveEntityProductAsyncOverride() {
 
         saveToStorage(STORAGE_KEYS.PRODUCTS, products);
 
-        if (firebaseEnabledRuntime && window.FirebaseAPI) {
+        if (firebaseEnabledRuntime && window.FirebaseAPI && !forceLocalStorageMode) {
             try {
                 await Promise.race([
                     window.FirebaseAPI.saveCesta(
                         { id: adminEditingId || obj.id, ...obj },
                         String(adminEditingId || obj.id)
                     ),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout no Firestore (dados locais foram salvos).')), 20000))
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout no Firestore (dados locais foram salvos).')), 10000))
                 ]);
             } catch (err) {
                 console.warn('Falhou ao salvar no Firestore, salvo localmente apenas.', err);
-                updateFirebaseStatus('error', `⚠️ Erro Firestore: ${err.message}. Dados salvos apenas localmente.`);
+                updateFirebaseStatus('error', `⚠️ Erro Firestore: ${err.message}. Dados salvos apenas localmente (você pode sincronizar depois).`);
             }
         }
 
@@ -1434,7 +1455,7 @@ async function deleteEntityAsyncOverride(entity, id) {
 async function syncLocalProductsToFirebase() {
     const btn = document.getElementById('btnSyncFirebase');
     if (!firebaseEnabledRuntime || !window.FirebaseAPI) {
-        alert('🔌 Firebase não configurado. Cole suas credenciais no arquivo firebase-init.js, recarregue a página e tente novamente.');
+        alert('🔌 Firebase desligado ou não configurado. Ligue-o clicando no botão "🔌 Reativar Firebase" ou cole suas credenciais.');
         return;
     }
     if (!confirm(`Deseja enviar suas ${products.length} cestas locais para o Firebase?\n(Isto sobrescreve cestas de mesmo ID.)`)) return;
@@ -1451,9 +1472,30 @@ async function syncLocalProductsToFirebase() {
     if (btn) { btn.disabled = false; btn.textContent = '☁️ Sincronizar'; }
 }
 
+let forceLocalStorageMode = false;
+
+function toggleFirebaseForceLocal() {
+    forceLocalStorageMode = !forceLocalStorageMode;
+    const btn = document.getElementById('btnToggleFirebase');
+    const btnSync = document.getElementById('btnSyncFirebase');
+    if (forceLocalStorageMode) {
+        firebaseEnabledRuntime = false;
+        updateFirebaseStatus('offline',
+            '🔌 Modo Local FORÇADO. ✅ Upload de fotos funciona normalmente (as imagens são salvas APENAS no seu navegador). Botão "Reativar Firebase" para usar a nuvem.');
+        if (btn) btn.textContent = '🔌 Reativar Firebase';
+        if (btnSync) btnSync.disabled = true;
+    } else {
+        if (btn) btn.textContent = '🔌 Forçar Modo Local';
+        if (btnSync) btnSync.disabled = false;
+        bootstrapFirebase();
+    }
+}
+
 async function bindFirebaseUI() {
     const syncBtn = document.getElementById('btnSyncFirebase');
     if (syncBtn) syncBtn.addEventListener('click', syncLocalProductsToFirebase);
+    const toggleBtn = document.getElementById('btnToggleFirebase');
+    if (toggleBtn) toggleBtn.addEventListener('click', toggleFirebaseForceLocal);
 }
 
 /* ====== Sobrescreve os handlers globais (antes do DOMContentLoaded chamar init()) ====== */
