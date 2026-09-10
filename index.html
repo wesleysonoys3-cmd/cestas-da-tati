@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Cestas da Tati - Presentes personalizados e deliciosos para todas as ocasiões">
+    <title>Cestas da Tati - Presentes Personalizados</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-top">
+                <button id="btnAdmin" class="btn-admin-link" title="Painel Admin">⚙️</button>
+                <h1 class="logo">Cestas da Tati</h1>
+                <div class="status-badge">
+                    <span class="status-dot"></span>
+                    <span id="statusText">Aberto hoje</span>
+                </div>
+            </div>
+            <p class="welcome-text">🌸 Bem-vinda! Presentes feitos com carinho para surpreender quem você ama. 💕</p>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <section class="showcase">
+                <h2 class="section-title">Nossas Cestas</h2>
+                <div id="productGrid" class="product-grid"></div>
+            </section>
+        </div>
+    </main>
+
+    <button id="cartButton" class="cart-float">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span id="cartCount" class="cart-count">0</span>
+    </button>
+
+    <div id="productModal" class="modal">
+        <div class="modal-content modal-product">
+            <button class="modal-close" data-close="productModal">&times;</button>
+            <div class="product-detail">
+                <img id="modalProductImage" src="" alt="" class="product-detail-image">
+                <h3 id="modalProductName" class="product-detail-name"></h3>
+                <div id="modalProductItems" class="product-detail-items"></div>
+                <p id="modalProductDescription" class="product-detail-desc"></p>
+
+                <div class="addons-section">
+                    <h4 class="addons-title">🎁 Adicionais</h4>
+                    <div id="addonsList" class="addons-list"></div>
+                </div>
+
+                <div class="notes-section">
+                    <label for="notesField" class="notes-label">✏️ Recado / Observações</label>
+                    <textarea id="notesField" class="notes-textarea" rows="3" placeholder="Mensagem para o cartão, nome na placa ou instruções especiais..."></textarea>
+                </div>
+
+                <div class="quantity-row">
+                    <div class="quantity-control">
+                        <button id="qtyMinus" class="qty-btn">−</button>
+                        <span id="qtyValue" class="qty-value">1</span>
+                        <button id="qtyPlus" class="qty-btn">+</button>
+                    </div>
+                    <button id="addToCartBtn" class="btn-add-cart">
+                        Adicionar
+                        <span id="addCartPrice" class="add-cart-price">R$ 0,00</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="cartModal" class="modal">
+        <div class="modal-content modal-cart">
+            <button class="modal-close" data-close="cartModal">&times;</button>
+            <h3 class="cart-title">🛍️ Sua Sacola</h3>
+
+            <div id="cartItemsContainer" class="cart-items-container">
+                <p class="cart-empty">Sua sacola está vazia. 🥺</p>
+            </div>
+
+            <button id="btnAddMore" class="btn-add-more" data-close-action="cartModal">＋ Adicionar mais itens</button>
+
+            <div id="checkoutSection" class="checkout-section" style="display:none;">
+                <h4 class="checkout-subtitle">📍 Frete e Agendamento</h4>
+
+                <div class="form-group">
+                    <label for="neighborhoodSelect" class="form-label">Bairro / Região de entrega</label>
+                    <select id="neighborhoodSelect" class="form-select">
+                        <option value="">Selecione o bairro...</option>
+                    </select>
+                </div>
+
+                <div class="form-group row">
+                    <div class="form-group col">
+                        <label for="deliveryDate" class="form-label">Data de entrega</label>
+                        <input type="date" id="deliveryDate" class="form-input">
+                    </div>
+                    <div class="form-group col">
+                        <label for="deliveryTime" class="form-label">Horário</label>
+                        <input type="time" id="deliveryTime" class="form-input">
+                    </div>
+                </div>
+
+                <h4 class="checkout-subtitle">👤 Dados do Comprador</h4>
+                <div class="form-group">
+                    <label for="buyerName" class="form-label">Seu nome</label>
+                    <input type="text" id="buyerName" class="form-input" placeholder="Nome completo">
+                </div>
+                <div class="form-group">
+                    <label for="buyerWhatsapp" class="form-label">Seu WhatsApp</label>
+                    <input type="tel" id="buyerWhatsapp" class="form-input" placeholder="(00) 00000-0000">
+                </div>
+
+                <h4 class="checkout-subtitle">🎁 Dados do Destinatário</h4>
+                <div class="form-group">
+                    <label for="receiverName" class="form-label">Nome de quem vai receber</label>
+                    <input type="text" id="receiverName" class="form-input" placeholder="Nome do presenteado">
+                </div>
+                <div class="form-group">
+                    <label for="receiverPhone" class="form-label">Telefone do destinatário</label>
+                    <input type="tel" id="receiverPhone" class="form-input" placeholder="(00) 00000-0000">
+                </div>
+                <div class="form-group">
+                    <label for="receiverAddress" class="form-label">Endereço completo</label>
+                    <textarea id="receiverAddress" class="form-input" rows="2" placeholder="Rua, número, complemento, bairro, cidade"></textarea>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="anonymousGift" class="form-checkbox">
+                    <label for="anonymousGift" class="form-checkbox-label">🤫 Manter presente anônimo</label>
+                </div>
+
+                <h4 class="checkout-subtitle">💳 Forma de Pagamento</h4>
+                <div class="payment-options">
+                    <label class="payment-option">
+                        <input type="radio" name="payment" value="Pix" class="form-radio">
+                        <span class="payment-box">
+                            <span class="payment-icon">⚡</span>
+                            <span class="payment-name">Pix</span>
+                        </span>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="payment" value="Cartão" class="form-radio">
+                        <span class="payment-box">
+                            <span class="payment-icon">💳</span>
+                            <span class="payment-name">Cartão</span>
+                        </span>
+                    </label>
+                </div>
+
+                <div id="pixPaymentBox" class="pix-box" style="display:none;">
+                    <div class="pix-header">
+                        <span class="pix-logo">⚡ Pix</span>
+                        <span class="pix-total" id="pixTotalValue">Total: R$ 0,00</span>
+                    </div>
+                    <div class="pix-key-box">
+                        <div class="pix-key-label">Chave Pix (CPF)</div>
+                        <div class="pix-key-row">
+                            <span id="pixKeyDisplay" class="pix-key">027.149.981-86</span>
+                            <button id="copyPixBtn" class="btn-copy-pix">📋 Copiar</button>
+                        </div>
+                    </div>
+                    <p class="pix-note">💡 Clique em copiar e cole no app do seu banco. Após finalizar envie o comprovante no WhatsApp.</p>
+                </div>
+
+                <h4 class="checkout-subtitle">🎟️ Cupom de Desconto</h4>
+                <div class="coupon-row">
+                    <input type="text" id="couponCode" class="form-input coupon-input" placeholder="Digite o cupom">
+                    <button id="applyCoupon" class="btn-coupon">Aplicar</button>
+                </div>
+                <p id="couponMessage" class="coupon-message"></p>
+
+                <div class="summary-box">
+                    <div class="summary-row">
+                        <span>Subtotal</span>
+                        <span id="summarySubtotal">R$ 0,00</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Taxa de entrega</span>
+                        <span id="summaryDelivery">R$ 0,00</span>
+                    </div>
+                    <div id="summaryDiscountRow" class="summary-row discount-row" style="display:none;">
+                        <span>Desconto</span>
+                        <span id="summaryDiscount">- R$ 0,00</span>
+                    </div>
+                    <div class="summary-row total-row">
+                        <span>Total</span>
+                        <span id="summaryTotal">R$ 0,00</span>
+                    </div>
+                </div>
+
+                <button id="finishOrder" class="btn-finish-order">📱 Finalizar Pedido via WhatsApp</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminModal" class="modal">
+        <div class="modal-content modal-admin">
+            <button class="modal-close" data-close="adminModal">&times;</button>
+            <h3 class="admin-title">⚙️ Painel de Administração</h3>
+
+            <div class="admin-login" id="adminLogin">
+                <div class="form-group">
+                    <label for="adminUsername" class="form-label">Usuário</label>
+                    <input type="text" id="adminUsername" class="form-input" placeholder="Digite seu usuário" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="adminPassword" class="form-label">Senha de acesso</label>
+                    <input type="password" id="adminPassword" class="form-input" placeholder="Digite a senha" autocomplete="current-password">
+                </div>
+                <button id="adminLoginBtn" class="btn-primary">Entrar</button>
+                <p class="admin-hint">Olá Tatiane! 💖 Use seu login e senha cadastrados.</p>
+            </div>
+
+            <div id="adminContent" style="display:none;">
+                <div class="admin-tabs">
+                    <button class="admin-tab active" data-tab="products">Cestas</button>
+                    <button class="admin-tab" data-tab="addons">Adicionais</button>
+                    <button class="admin-tab" data-tab="delivery">Taxas</button>
+                    <button class="admin-tab" data-tab="coupons">Cupons</button>
+                </div>
+
+                <div id="tab-products" class="admin-tab-content active">
+                    <h4 class="admin-section-title">Gerenciar Cestas</h4>
+                    <div id="adminProductsList" class="admin-list"></div>
+                    <button id="btnNewProduct" class="btn-secondary">＋ Nova Cesta</button>
+
+                    <div id="productForm" class="admin-form" style="display:none;">
+                        <h5 id="productFormTitle">Nova Cesta</h5>
+                        <div class="form-group">
+                            <label class="form-label">URL da Imagem</label>
+                            <input type="text" id="pImage" class="form-input" placeholder="https://...">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Nome da Cesta</label>
+                            <input type="text" id="pName" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Itens inclusos (um por linha)</label>
+                            <textarea id="pItems" class="form-input" rows="5"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Descrição</label>
+                            <textarea id="pDesc" class="form-input" rows="2"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Preço Base (R$)</label>
+                            <input type="number" id="pPrice" class="form-input" step="0.01" min="0">
+                        </div>
+                        <div class="admin-form-buttons">
+                            <button id="cancelProduct" class="btn-outline">Cancelar</button>
+                            <button id="saveProduct" class="btn-primary">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-addons" class="admin-tab-content">
+                    <h4 class="admin-section-title">Gerenciar Adicionais</h4>
+                    <div id="adminAddonsList" class="admin-list"></div>
+                    <button id="btnNewAddon" class="btn-secondary">＋ Novo Adicional</button>
+
+                    <div id="addonForm" class="admin-form" style="display:none;">
+                        <h5 id="addonFormTitle">Novo Adicional</h5>
+                        <div class="form-group">
+                            <label class="form-label">Nome</label>
+                            <input type="text" id="aName" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Preço (R$)</label>
+                            <input type="number" id="aPrice" class="form-input" step="0.01" min="0">
+                        </div>
+                        <div class="admin-form-buttons">
+                            <button id="cancelAddon" class="btn-outline">Cancelar</button>
+                            <button id="saveAddon" class="btn-primary">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-delivery" class="admin-tab-content">
+                    <h4 class="admin-section-title">Gerenciar Taxas de Entrega</h4>
+                    <div id="adminDeliveryList" class="admin-list"></div>
+                    <button id="btnNewDelivery" class="btn-secondary">＋ Nova Taxa</button>
+
+                    <div id="deliveryForm" class="admin-form" style="display:none;">
+                        <h5 id="deliveryFormTitle">Nova Taxa</h5>
+                        <div class="form-group">
+                            <label class="form-label">Bairro / Região</label>
+                            <input type="text" id="dName" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Valor (R$)</label>
+                            <input type="number" id="dPrice" class="form-input" step="0.01" min="0">
+                        </div>
+                        <div class="admin-form-buttons">
+                            <button id="cancelDelivery" class="btn-outline">Cancelar</button>
+                            <button id="saveDelivery" class="btn-primary">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-coupons" class="admin-tab-content">
+                    <h4 class="admin-section-title">Gerenciar Cupons</h4>
+                    <div id="adminCouponsList" class="admin-list"></div>
+                    <button id="btnNewCoupon" class="btn-secondary">＋ Novo Cupom</button>
+
+                    <div id="couponForm" class="admin-form" style="display:none;">
+                        <h5 id="couponFormTitle">Novo Cupom</h5>
+                        <div class="form-group">
+                            <label class="form-label">Código (ex: TATI10)</label>
+                            <input type="text" id="cCode" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Tipo de Desconto</label>
+                            <select id="cType" class="form-select">
+                                <option value="percent">Porcentagem (%)</option>
+                                <option value="fixed">Valor Fixo (R$)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Valor do Desconto</label>
+                            <input type="number" id="cValue" class="form-input" step="0.01" min="0">
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="cActive" class="form-checkbox" checked>
+                            <label class="form-checkbox-label" for="cActive">Cupom ativo</label>
+                        </div>
+                        <div class="admin-form-buttons">
+                            <button id="cancelCoupon" class="btn-outline">Cancelar</button>
+                            <button id="saveCoupon" class="btn-primary">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <p>💕 Cestas da Tati — Feito com amor 💝</p>
+            <p class="footer-contact">WhatsApp: <a href="https://wa.me/5561995869522" target="_blank">(61) 99586-9522</a></p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
