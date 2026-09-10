@@ -10,12 +10,12 @@
     // 4. Copie apenas o objeto firebaseConfig abaixo e cole aqui.
     // ============================================================
     const FIREBASE_CONFIG = {
-        apiKey:            'SUA_API_KEY_AQUI',
-        authDomain:        'SEU-PROJETO.firebaseapp.com',
-        projectId:         'SEU-PROJETO',
-        storageBucket:     'SEU-PROJETO.appspot.com',
-        messagingSenderId: '000000000000',
-        appId:             '1:000000000000:web:abc123def456'
+        apiKey:            'AIzaSyCZdnA3ndvEJ_tf6yq5-dUmQT6NdZT9cJ8',
+        authDomain:        'tatie-atelie-cestas.firebaseapp.com',
+        projectId:         'tatie-atelie-cestas',
+        storageBucket:     'tatie-atelie-cestas.firebasestorage.app',
+        messagingSenderId: '985398626618',
+        appId:             '1:985398626618:web:1cda3d2bdb96b437cc6803'
     };
     // ============================================================
     // ❗ NÃO EDITE ABAIXO DESSA LINHA ❗
