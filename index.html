@@ -3,30 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Cestas da Tati - Presentes personalizados e deliciosos para todas as ocasiões">
-    <title>Cestas da Tati - Presentes Personalizados</title>
+    <meta name="description" content="Tatiê Ateliê & Cestas - Presentes feitos para encantar. Cestas personalizadas, cafés da manhã e presentes feitos com amor.">
+    <title>Tatiê | Ateliê & Cestas - Presentes feitos para encantar</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
 </head>
 <body>
     <header class="header">
         <div class="container">
             <div class="header-top">
                 <button id="btnAdmin" class="btn-admin-link" title="Painel Admin">⚙️</button>
-                <h1 class="logo">Cestas da Tati</h1>
+                <div class="logo-mini">Tatiê <span class="logo-mini-sub">· Ateliê & Cestas</span></div>
                 <div class="status-badge">
                     <span class="status-dot"></span>
                     <span id="statusText">Aberto hoje</span>
                 </div>
             </div>
-            <p class="welcome-text">🌸 Bem-vinda! Presentes feitos com carinho para surpreender quem você ama. 💕</p>
         </div>
     </header>
 
+    <section class="hero">
+        <div class="hero-overlay"></div>
+        <div class="hero-leaf leaf-1" aria-hidden="true">🌸</div>
+        <div class="hero-leaf leaf-2" aria-hidden="true">🌿</div>
+        <div class="hero-leaf leaf-3" aria-hidden="true">✨</div>
+        <div class="hero-leaf leaf-4" aria-hidden="true">💗</div>
+        <div class="container hero-content">
+            <div class="hero-seal">
+                <div class="hero-seal-ring">
+                    <div class="hero-seal-inner">
+                        <span class="hero-seal-letter">T</span>
+                        <span class="hero-seal-heart">💗</span>
+                    </div>
+                </div>
+            </div>
+            <h1 class="hero-title">TATIÊ</h1>
+            <div class="hero-divider">
+                <span class="hero-line"></span>
+                <span class="hero-heart">🤍</span>
+                <span class="hero-line"></span>
+            </div>
+            <p class="hero-subtitle">ATELIÊ &amp; CESTAS</p>
+            <p class="hero-slogan">Presentes feitos para encantar.</p>
+            <p class="hero-welcome">Cada detalhe preparado com carinho para tornar seu momento ainda mais especial. 💕</p>
+            <a href="#produtos" class="hero-cta">🛍️ Ver Nossas Cestas</a>
+        </div>
+    </section>
+
     <main class="main">
-        <div class="container">
+        <div class="container" id="produtos">
             <section class="showcase">
                 <h2 class="section-title">Nossas Cestas</h2>
                 <div id="productGrid" class="product-grid"></div>
@@ -339,7 +366,8 @@
 
     <footer class="footer">
         <div class="container">
-            <p>💕 Cestas da Tati — Feito com amor 💝</p>
+            <p class="footer-brand">💗 Tatiê · Ateliê &amp; Cestas</p>
+            <p class="footer-slogan">Presentes feitos para encantar.</p>
             <p class="footer-contact">WhatsApp: <a href="https://wa.me/5561995869522" target="_blank">(61) 99586-9522</a></p>
         </div>
     </footer>

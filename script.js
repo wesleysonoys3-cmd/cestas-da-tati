@@ -12,6 +12,8 @@ const ADMIN_USERNAME = 'tati2026';
 const ADMIN_PASSWORD = 'tatiane2026';
 const DEFAULT_WHATSAPP = '5561995869522';
 const PIX_KEY = '02714998186';
+const STORE_NAME = 'Tatiê Ateliê & Cestas';
+const STORE_SLOGAN = 'Presentes feitos para encantar.';
 
 const DEFAULT_PRODUCTS = [
     {
@@ -561,7 +563,8 @@ function finishOrder() {
     const dateFormatted = dateObj.toLocaleDateString('pt-BR');
     const timeFormatted = deliveryTime;
 
-    let message = '🌸 *NOVO PEDIDO — CESTAS DA TATI* 🌸\n\n';
+    let message = `💗 *NOVO PEDIDO — ${STORE_NAME.toUpperCase()}* 💗\n\n`;
+    message += '_' + STORE_SLOGAN + '_\n';
     message += '────────────────────\n';
     message += `📋 *PEDIDO:*\n`;
     cart.forEach((item, idx) => {
