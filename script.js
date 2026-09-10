@@ -80,16 +80,31 @@ const DEFAULT_ADDONS = [
 ];
 
 const DEFAULT_DELIVERY = [
-    { id: 1, name: 'Centro', price: 10.00 },
-    { id: 2, name: 'Jardins', price: 12.00 },
-    { id: 3, name: 'Vila Esperança', price: 15.00 },
-    { id: 4, name: 'Alto da Glória', price: 15.00 },
-    { id: 5, name: 'Cidade Jardim', price: 18.00 },
-    { id: 6, name: 'Parque das Flores', price: 18.00 },
-    { id: 7, name: 'Bairro Novo', price: 20.00 },
-    { id: 8, name: 'Zona Rural / Sítios', price: 35.00 },
-    { id: 9, name: 'Retirada na loja (Grátis)', price: 0.00 }
+    /* ---------- ÁREAS CENTRAIS / PLANO PILOTO (mais perto) ---------- */
+    { id: 1,  name: 'Brasília / Asa Sul (SQSW / SQS)',                 price: 10.00 },
+    { id: 2,  name: 'Brasília / Asa Norte (SQNW / SQN)',                price: 10.00 },
+    { id: 3,  name: 'Brasília / Setor de Hotéis (SHS / SHN)',           price: 12.00 },
+    { id: 4,  name: 'Brasília / Eixão (SIA / SIG / SCES)',              price: 15.00 },
+    { id: 5,  name: 'Lago Sul (QL / QL 01 a 30)',                       price: 15.00 },
+    { id: 6,  name: 'Lago Norte (Qlago Norte / Norte Parque)',          price: 18.00 },
+    { id: 7,  name: 'Guará (QI / QII / QN)',                            price: 15.00 },
+    { id: 8,  name: 'Águas Claras (Avenida Castelo Branco / QS)',       price: 18.00 },
+    { id: 9,  name: 'Gama (Satélite Gama - Região Central)',            price: 22.00 },
+    { id: 10, name: 'Taguatinga (QNJ / Taguatinga Sul)',                price: 20.00 },
+    { id: 11, name: 'Ceilândia (QNN / Ceilândia Centro)',               price: 25.00 },
+    { id: 12, name: 'Samambaia (QSB / Samambaia Norte)',                price: 25.00 },
+    { id: 13, name: 'Santa Maria (QRS / Santa Maria 1 a 5)',            price: 28.00 },
+    { id: 14, name: 'Brazlândia (Região Norte - Distante)',             price: 35.00 },
+    { id: 15, name: 'Planaltina (Extremo Norte - DF)',                  price: 40.00 },
+    { id: 16, name: 'Sobradinho / Sobradinho II',                       price: 30.00 },
+    { id: 17, name: 'Paranoá / Jardins Mangueiral / Itapoã',             price: 28.00 },
+    { id: 18, name: 'Vicente Pires / Setor Habitacional Vicente Pires', price: 22.00 },
+    { id: 19, name: 'Riacho Fundo I / II (QRF)',                        price: 22.00 },
+    { id: 20, name: 'Outra região / Fora do DF — Consultar taxa',       price: 50.00 },
+    { id: 99, name: '✅ Retirada na Tatiê (Sem taxa de entrega)',       price: 0.00  }
 ];
+
+const DEFAULT_DELIVERY_RESET_FLAG = 'deliveryDefaultsVersion_DF_Brasilia_2026';
 
 const DEFAULT_COUPONS = [
     { id: 1, code: 'TATI10', type: 'percent', value: 10, active: true },
@@ -125,17 +140,26 @@ function loadFromStorage() {
     const storedCoupons = localStorage.getItem(STORAGE_KEYS.COUPONS);
     const storedCart = localStorage.getItem(STORAGE_KEYS.CART);
     const storedWhatsApp = localStorage.getItem(STORAGE_KEYS.WHATSAPP);
+    const deliveryResetApplied = localStorage.getItem(DEFAULT_DELIVERY_RESET_FLAG);
 
     products = storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS;
     addons = storedAddons ? JSON.parse(storedAddons) : DEFAULT_ADDONS;
-    deliveryRates = storedDelivery ? JSON.parse(storedDelivery) : DEFAULT_DELIVERY;
+
+    /* ---------- Atualiza taxas de Brasília/DF na 1a vez após a atualização ---------- */
+    if (!storedDelivery || !deliveryResetApplied) {
+        deliveryRates = DEFAULT_DELIVERY.slice();
+        saveToStorage(STORAGE_KEYS.DELIVERY, deliveryRates);
+        localStorage.setItem(DEFAULT_DELIVERY_RESET_FLAG, '1');
+    } else {
+        deliveryRates = JSON.parse(storedDelivery);
+    }
+
     coupons = storedCoupons ? JSON.parse(storedCoupons) : DEFAULT_COUPONS;
     cart = storedCart ? JSON.parse(storedCart) : [];
     whatsappNumber = storedWhatsApp || DEFAULT_WHATSAPP;
 
     if (!storedProducts) saveToStorage(STORAGE_KEYS.PRODUCTS, products);
     if (!storedAddons) saveToStorage(STORAGE_KEYS.ADDONS, addons);
-    if (!storedDelivery) saveToStorage(STORAGE_KEYS.DELIVERY, deliveryRates);
     if (!storedCoupons) saveToStorage(STORAGE_KEYS.COUPONS, coupons);
     if (!storedWhatsApp) localStorage.setItem(STORAGE_KEYS.WHATSAPP, whatsappNumber);
 }
@@ -587,7 +611,9 @@ function finishOrder() {
     }
     message += `💵 *TOTAL:* ${formatCurrency(Math.max(0, total))}\n`;
     message += '\n────────────────────\n';
-    message += `📅 *Entrega:* ${dateFormatted} às ${timeFormatted}\n\n`;
+    message += `📅 *Entrega:* ${dateFormatted} às ${timeFormatted}\n`;
+    message += `📍 *Cidade:* Brasília — DF\n`;
+    message += `🗺️ *Região Administrativa (R.A.):* ${d.name}\n\n`;
     message += `👤 *Comprador:*\n`;
     message += `   Nome: ${buyerName}\n`;
     message += `   WhatsApp: ${buyerWhatsapp}\n\n`;
@@ -597,7 +623,7 @@ function finishOrder() {
     message += `🎁 *Destinatário:*\n`;
     message += `   Nome: ${receiverName}\n`;
     message += `   Telefone: ${receiverPhone}\n`;
-    message += `   Endereço: ${receiverAddress}\n\n`;
+    message += `   📍 *Endereço em Brasília/DF:* ${receiverAddress}\n\n`;
     message += `💳 *Pagamento:* ${payment}\n`;
     if (payment === 'Pix') {
         message += `⚡ *Chave Pix:* ${PIX_KEY}\n`;
