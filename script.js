@@ -981,38 +981,77 @@ let pendingObjectUrl = null;
 let pendingBase64Image = null;
 
 /* ---------- Helper: Comprime imagem e converte para Base64 (Funciona SEM Firebase!) ---------- */
-function compressImageToBase64(file, maxWidth = 1200, quality = 0.78) {
+function readFileAsDataURL(file) {
     return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function compressImageToBase64(file, maxWidth = 1200, quality = 0.78) {
+    if (!file) return null;
+    try {
+        let rawBase64 = null;
         try {
-            if (!file) return resolve(null);
-            const reader = new FileReader();
-            reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
-            reader.onload = (e) => {
-                const img = new Image();
-                img.onerror = () => reject(new Error('Arquivo inválido — use JPG ou PNG.'));
-                img.onload = () => {
-                    let w = img.naturalWidth;
-                    let h = img.naturalHeight;
+            rawBase64 = await Promise.race([
+                readFileAsDataURL(file),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ao ler a imagem (tente outra foto).')), 12000))
+            ]);
+        } catch (err) {
+            throw new Error('Falha ao ler a foto do arquivo: ' + (err.message || err));
+        }
+
+        const canvasSupported = typeof document !== 'undefined' && typeof HTMLCanvasElement !== 'undefined';
+        if (!canvasSupported || /heic|heif|webp/i.test(file.type || '')) {
+            // Fallback 1: HEIC / formatos que Canvas não suporta → retorna Base64 cru (já funciona)
+            if (/heic|heif/i.test(file.type || '') || !canvasSupported) {
+                return rawBase64;
+            }
+        }
+
+        // Tenta comprimir via Canvas (JPEG)
+        return await new Promise((resolve, reject) => {
+            const safety = setTimeout(() => reject(new Error('Timeout ao comprimir. Usaremos a foto original.')), 12000);
+            const img = new Image();
+            img.onerror = () => {
+                clearTimeout(safety);
+                // Fallback 2: se Canvas não conseguir renderizar (ex: HEIC/MIME errado), devolve o Base64 cru
+                resolve(rawBase64);
+            };
+            img.onload = () => {
+                try {
+                    let w = img.naturalWidth || img.width;
+                    let h = img.naturalHeight || img.height;
+                    if (!w || !h) { clearTimeout(safety); return resolve(rawBase64); }
                     if (w > maxWidth) {
-                        h = Math.round((h * maxWidth) / w);
+                        h = Math.max(1, Math.round((h * maxWidth) / w));
                         w = maxWidth;
                     }
                     const canvas = document.createElement('canvas');
                     canvas.width = w;
                     canvas.height = h;
                     const ctx = canvas.getContext('2d');
-                    if (!ctx) return reject(new Error('Navegador não suporta Canvas.'));
+                    if (!ctx) { clearTimeout(safety); return resolve(rawBase64); }
                     ctx.drawImage(img, 0, 0, w, h);
-                    const out = canvas.toDataURL('image/jpeg', quality);
-                    resolve(out);
-                };
-                img.src = e.target.result;
+                    let out = '';
+                    try { out = canvas.toDataURL('image/jpeg', quality); } catch (_) { out = ''; }
+                    clearTimeout(safety);
+                    // Se a saída for vazia ou igual a nada, volta ao Base64 cru
+                    resolve(out && out.length > 100 ? out : rawBase64);
+                } catch (err) {
+                    clearTimeout(safety);
+                    resolve(rawBase64);
+                }
             };
-            reader.readAsDataURL(file);
-        } catch (err) {
-            reject(err);
-        }
-    });
+            img.src = rawBase64;
+        });
+    } catch (err) {
+        console.warn('compressImageToBase64 falhou, usando fallback readAsDataURL.', err);
+        if (file) return readFileAsDataURL(file);
+        throw err;
+    }
 }
 
 function kbOfBase64(b64) {
@@ -1111,8 +1150,8 @@ async function bindProductImageUploader(editingProduct) {
             fileInput.value = '';
             return;
         }
-        if (!/^image\//.test(f.type || '')) {
-            alert('Por favor selecione uma imagem (PNG, JPG ou WebP).');
+        if (!/^image\//.test(f.type || '') && !/\.(heic|heif)$/i.test(f.name || '')) {
+            alert('Por favor selecione uma imagem (PNG, JPG, WebP ou HEIC).');
             fileInput.value = '';
             return;
         }
@@ -1124,31 +1163,39 @@ async function bindProductImageUploader(editingProduct) {
         previewImg.src = pendingObjectUrl;
         fileLabel.textContent = `${f.name} (${(f.size/1024).toFixed(1)} KB)`;
 
-        if (!firebaseEnabledRuntime) {
-            try {
+        try {
+            if (!firebaseEnabledRuntime) {
                 if (statusEl) {
                     statusEl.style.display = 'flex';
-                    if (progressFill) progressFill.style.width = '45%';
+                    if (progressFill) progressFill.style.width = '40%';
                     if (progressText) {
                         progressText.className = 'upload-status-text';
-                        progressText.textContent = '🖼️ Processando imagem (salvando sem Firebase)...';
+                        progressText.textContent = '🖼️ Processando imagem (salvando localmente)...';
                     }
                 }
-                const b64 = await compressImageToBase64(f, 1200, 0.78);
+                const b64 = await Promise.race([
+                    compressImageToBase64(f, 1200, 0.78),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout — a foto demorou muito para ser processada. Tente uma imagem menor.')), 20000))
+                ]);
                 pendingBase64Image = b64;
                 if (progressFill) progressFill.style.width = '100%';
                 if (progressText) {
                     progressText.className = 'upload-status-text success';
-                    progressText.textContent = `✅ Foto pronta! Tamanho: ~${kbOfBase64(b64)} KB (ao salvar, ela entra direto na cesta).`;
+                    progressText.textContent = `✅ Foto pronta! Tamanho: ~${kbOfBase64(b64)} KB (ao 💾 Salvar, ela entra direto na cesta).`;
                 }
-            } catch (err) {
-                pendingBase64Image = null;
-                if (progressText) {
-                    progressText.className = 'upload-status-text error';
-                    progressText.textContent = '❌ Erro ao processar: ' + err.message;
-                }
-                alert('Erro ao preparar a imagem: ' + err.message);
+            } else if (statusEl) {
+                statusEl.style.display = 'none';
             }
+        } catch (err) {
+            pendingBase64Image = null;
+            console.error(err);
+            if (progressText) {
+                progressText.className = 'upload-status-text error';
+                progressText.textContent = '⚠️ ' + err.message + ' (mesmo assim, ao salvar tentaremos novamente)';
+            }
+        } finally {
+            // NUNCA trava o botão de upload
+            if (progressFill && !progressFill.style.width) progressFill.style.width = '100%';
         }
     };
 
@@ -1212,128 +1259,139 @@ async function saveEntityProductAsyncOverride() {
     const progressFill = document.getElementById('pUploadProgressFill');
     const progressText = document.getElementById('pUploadText');
     const pImageInput  = document.getElementById('pImage');
+    const prevBtnText = saveBtn ? saveBtn.textContent : '💾 Salvar';
 
-    let image = pImageInput.value.trim();
-    const name = document.getElementById('pName').value.trim();
-    const itemsText = document.getElementById('pItems').value;
-    const desc = document.getElementById('pDesc').value.trim();
-    const price = parseFloat(document.getElementById('pPrice').value);
+    try {
+        let image = pImageInput.value.trim();
+        const name = document.getElementById('pName').value.trim();
+        const itemsText = document.getElementById('pItems').value;
+        const desc = document.getElementById('pDesc').value.trim();
+        const price = parseFloat(document.getElementById('pPrice').value);
 
-    if (!name || !price || isNaN(price)) {
-        alert('Preencha nome e preço da cesta.');
-        return;
-    }
-    const items = itemsText.split('\n').map(i => i.trim()).filter(i => i.length > 0);
+        if (!name || !price || isNaN(price)) {
+            alert('Preencha nome e preço da cesta.');
+            return;
+        }
+        const items = itemsText.split('\n').map(i => i.trim()).filter(i => i.length > 0);
 
-    // ----------- UPLOAD / CONVERSÃO DA IMAGEM -----------
-    if (pendingImageFile) {
-        saveBtn.disabled = true;
-        const prevBtnText = saveBtn.textContent;
-        saveBtn.textContent = '⌛ Processando...';
-
-        if (firebaseEnabledRuntime && window.FirebaseAPI) {
-            // --- Firebase configurado: envia pro Storage ---
-            if (statusEl) statusEl.style.display = 'flex';
-            if (progressText) {
-                progressText.className = 'upload-status-text';
-                progressText.textContent = 'Enviando imagem para o Firebase...';
+        if (pendingImageFile) {
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = '⌛ Processando...';
             }
-            try {
-                const up = await window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
-                    if (progressFill) progressFill.style.width = pct + '%';
-                    if (progressText) progressText.textContent = `Enviando imagem... ${pct}%`;
-                });
-                image = up.url;
-                pImageInput.value = image;
+
+            if (firebaseEnabledRuntime && window.FirebaseAPI) {
+                if (statusEl) statusEl.style.display = 'flex';
                 if (progressText) {
-                    progressText.className = 'upload-status-text success';
-                    progressText.textContent = '✅ Imagem enviada! Salvando cesta...';
-                }
-            } catch (err) {
-                console.error(err);
-                if (progressText) {
-                    progressText.className = 'upload-status-text error';
-                    progressText.textContent = '❌ Erro no upload: ' + err.message;
-                }
-                alert('Não foi possível enviar a imagem para o Firebase.\n\nDetalhes: ' + err.message + '\n\nDica: confira as Regras do Storage no Console.');
-                saveBtn.disabled = false;
-                saveBtn.textContent = prevBtnText;
-                return;
-            }
-        } else {
-            // --- SEM Firebase: usa Base64 LOCAL (comprime e salva no produto) ---
-            if (!pendingBase64Image) {
-                if (statusEl) {
-                    statusEl.style.display = 'flex';
-                    if (progressFill) progressFill.style.width = '50%';
-                    if (progressText) {
-                        progressText.className = 'upload-status-text';
-                        progressText.textContent = '🖼️ Processando imagem (salvando localmente)...';
-                    }
+                    progressText.className = 'upload-status-text';
+                    progressText.textContent = 'Enviando imagem para o Firebase...';
                 }
                 try {
-                    pendingBase64Image = await compressImageToBase64(pendingImageFile, 1200, 0.78);
+                    const up = await Promise.race([
+                        window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
+                            if (progressFill) progressFill.style.width = pct + '%';
+                            if (progressText) progressText.textContent = `Enviando imagem... ${pct}%`;
+                        }),
+                        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout no upload do Firebase (verifique a internet e as Regras).')), 45000))
+                    ]);
+                    image = up.url;
+                    pImageInput.value = image;
+                    if (progressText) {
+                        progressText.className = 'upload-status-text success';
+                        progressText.textContent = '✅ Imagem enviada! Salvando cesta...';
+                    }
                 } catch (err) {
                     console.error(err);
                     if (progressText) {
                         progressText.className = 'upload-status-text error';
-                        progressText.textContent = '❌ Erro: ' + err.message;
+                        progressText.textContent = '❌ Erro Firebase: ' + err.message;
                     }
-                    alert('Erro ao processar a imagem: ' + err.message);
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = prevBtnText;
+                    alert('Não foi possível enviar a imagem para o Firebase.\n\nDetalhes: ' + err.message + '\n\nDica 1: publique as Regras do Storage.\nDica 2: cheque sua internet.');
                     return;
                 }
-            }
-            image = pendingBase64Image;
-            pImageInput.value = ''; // não preenchemos o URL field, pois vai inline
-            if (statusEl) {
-                if (progressFill) progressFill.style.width = '100%';
-                if (progressText) {
-                    progressText.className = 'upload-status-text success';
-                    progressText.textContent = `✅ Foto incluída! Tamanho final ~${kbOfBase64(image)} KB.`;
+            } else {
+                if (!pendingBase64Image) {
+                    if (statusEl) {
+                        statusEl.style.display = 'flex';
+                        if (progressFill) progressFill.style.width = '40%';
+                        if (progressText) {
+                            progressText.className = 'upload-status-text';
+                            progressText.textContent = '🖼️ Preparando imagem (salvando localmente)...';
+                        }
+                    }
+                    try {
+                        pendingBase64Image = await Promise.race([
+                            compressImageToBase64(pendingImageFile, 1200, 0.78),
+                            new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout — a foto demorou muito. Tente uma imagem menor.')), 25000))
+                        ]);
+                    } catch (err) {
+                        console.error(err);
+                        if (progressText) {
+                            progressText.className = 'upload-status-text error';
+                            progressText.textContent = '❌ Erro: ' + err.message;
+                        }
+                        alert('Erro ao processar a imagem: ' + err.message + '\n\nTente uma foto JPG menor.');
+                        return;
+                    }
+                }
+                image = pendingBase64Image;
+                pImageInput.value = '';
+                if (statusEl) {
+                    if (progressFill) progressFill.style.width = '100%';
+                    if (progressText) {
+                        progressText.className = 'upload-status-text success';
+                        progressText.textContent = `✅ Foto pronta! ~${kbOfBase64(image)} KB. Salvando cesta...`;
+                    }
                 }
             }
         }
 
-        saveBtn.textContent = prevBtnText;
-        saveBtn.disabled = false;
-    }
+        const obj = {
+            name,
+            image: image || 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=beautiful%20gift%20basket%20pink%20wine%20decoration%20ribbon&image_size=landscape_4_3',
+            items,
+            description: desc,
+            price
+        };
 
-    const obj = {
-        name,
-        image: image || 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=beautiful%20gift%20basket%20pink%20wine%20decoration%20ribbon&image_size=landscape_4_3',
-        items,
-        description: desc,
-        price
-    };
+        if (adminEditingId) {
+            const idx = products.findIndex(p => p.id === adminEditingId);
+            if (idx !== -1) products[idx] = { ...products[idx], ...obj };
+        } else {
+            obj.id = generateId();
+            products.push(obj);
+        }
 
-    if (adminEditingId) {
-        const idx = products.findIndex(p => p.id === adminEditingId);
-        if (idx !== -1) products[idx] = { ...products[idx], ...obj };
-    } else {
-        obj.id = generateId();
-        products.push(obj);
-    }
+        saveToStorage(STORAGE_KEYS.PRODUCTS, products);
 
-    saveToStorage(STORAGE_KEYS.PRODUCTS, products);
+        if (firebaseEnabledRuntime && window.FirebaseAPI) {
+            try {
+                await Promise.race([
+                    window.FirebaseAPI.saveCesta(
+                        { id: adminEditingId || obj.id, ...obj },
+                        String(adminEditingId || obj.id)
+                    ),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout no Firestore (dados locais foram salvos).')), 20000))
+                ]);
+            } catch (err) {
+                console.warn('Falhou ao salvar no Firestore, salvo localmente apenas.', err);
+                updateFirebaseStatus('error', `⚠️ Erro Firestore: ${err.message}. Dados salvos apenas localmente.`);
+            }
+        }
 
-    if (firebaseEnabledRuntime && window.FirebaseAPI) {
-        try {
-            await window.FirebaseAPI.saveCesta(
-                { id: adminEditingId || obj.id, ...obj },
-                String(adminEditingId || obj.id)
-            );
-        } catch (err) {
-            console.warn('Falhou ao salvar no Firestore, salvo localmente apenas.', err);
-            updateFirebaseStatus('error', `⚠️ Erro ao salvar na nuvem: ${err.message}. Os dados foram salvos apenas localmente.`);
+        renderProducts();
+        renderAdminProducts();
+        closeEntityForm('product');
+    } catch (globalErr) {
+        console.error('saveEntityProductAsyncOverride falhou:', globalErr);
+        alert('Ocorreu um erro inesperado ao salvar a cesta:\n\n' + (globalErr.message || globalErr));
+    } finally {
+        // NUNCA MAIS trava no "Processando..."
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = prevBtnText;
         }
     }
-
-    renderProducts();
-    renderAdminProducts();
-    closeEntityForm('product');
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Salvar'; }
 }
 
 async function deleteEntityAsyncOverride(entity, id) {
