@@ -9,6 +9,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js';
+        import { getStorage } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-storage.js';
+        window.__firebaseModules = { initializeApp, getFirestore, getStorage };
+        window.dispatchEvent(new Event('firebase:ready'));
+    </script>
+    <script src="firebase-init.js" defer></script>
 </head>
 <body>
     <header class="header">
@@ -251,14 +260,46 @@
                 </div>
 
                 <div id="tab-products" class="admin-tab-content active">
-                    <h4 class="admin-section-title">Gerenciar Cestas</h4>
+                    <h4 class="admin-section-title">Gerenciar Cestas 🏷️</h4>
+
+                    <div id="fbStatus" class="fb-status fb-status-offline">
+                        <span class="fb-dot"></span>
+                        <span class="fb-status-text">
+                            Modo Local (localStorage). Configure o Firebase no arquivo <code>firebase-init.js</code> para usar nuvem.
+                        </span>
+                        <button id="btnSyncFirebase" class="btn-tiny" style="margin-left:auto;">☁️ Sincronizar</button>
+                    </div>
+
                     <div id="adminProductsList" class="admin-list"></div>
                     <button id="btnNewProduct" class="btn-secondary">＋ Nova Cesta</button>
 
                     <div id="productForm" class="admin-form" style="display:none;">
                         <h5 id="productFormTitle">Nova Cesta</h5>
+
                         <div class="form-group">
-                            <label class="form-label">URL da Imagem</label>
+                            <label class="form-label">📷 Foto da Cesta</label>
+                            <div class="image-upload-area">
+                                <label class="image-upload-label" for="pImageFile">
+                                    <span class="image-upload-icon">🖼️</span>
+                                    <span id="pImageFileLabel" class="image-upload-text">Clique para selecionar foto</span>
+                                    <span class="image-upload-hint">PNG, JPG, WebP · até 5MB</span>
+                                </label>
+                                <input type="file" id="pImageFile" accept="image/png,image/jpeg,image/webp" style="display:none;">
+                            </div>
+
+                            <div id="pImagePreviewWrap" class="image-preview-wrap" style="display:none;">
+                                <img id="pImagePreview" src="" alt="Prévia" class="image-preview-img">
+                                <button id="pImageClear" type="button" class="image-preview-clear">✕ Remover</button>
+                            </div>
+
+                            <div id="pUploadStatus" class="upload-status" style="display:none;">
+                                <div class="upload-progress-bar"><div id="pUploadProgressFill" class="upload-progress-fill"></div></div>
+                                <span id="pUploadText" class="upload-status-text">Enviando imagem...</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">🔗 URL da Imagem (opcional, usada se não enviar foto)</label>
                             <input type="text" id="pImage" class="form-input" placeholder="https://...">
                         </div>
                         <div class="form-group">
@@ -279,7 +320,7 @@
                         </div>
                         <div class="admin-form-buttons">
                             <button id="cancelProduct" class="btn-outline">Cancelar</button>
-                            <button id="saveProduct" class="btn-primary">Salvar</button>
+                            <button id="saveProduct" class="btn-primary">💾 Salvar</button>
                         </div>
                     </div>
                 </div>

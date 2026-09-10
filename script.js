@@ -970,4 +970,336 @@ function closeModal(modalId) {
     }, 50);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+/* ============================================================
+   🔥 INTEGRAÇÃO FIREBASE (Fallback automático para localStorage)
+   ============================================================ */
+
+let firebaseEnabledRuntime = false;
+let pendingImageFile = null;
+let pendingObjectUrl = null;
+
+function updateFirebaseStatus(state, msg) {
+    const el = document.getElementById('fbStatus');
+    if (!el) return;
+    const dot = el.querySelector('.fb-dot');
+    const text = el.querySelector('.fb-status-text');
+    el.classList.remove('fb-status-offline', 'fb-status-online', 'fb-status-error');
+    const map = { online: 'fb-status-online', offline: 'fb-status-offline', error: 'fb-status-error' };
+    el.classList.add(map[state] || 'fb-status-offline');
+    if (text) text.innerHTML = msg;
+}
+
+async function bootstrapFirebase() {
+    try {
+        if (!window.FirebaseAPI) {
+            updateFirebaseStatus('offline',
+                'Firebase não carregou — modo Local ativo. Recarregue a página ou confira a conexão.');
+            return false;
+        }
+        const ok = await window.FirebaseAPI.init();
+        firebaseEnabledRuntime = !!ok;
+        if (ok) {
+            updateFirebaseStatus('online',
+                `☁️ Conectado ao Firebase · Projeto: <code>${window.FirebaseAPI.CONFIG.projectId}</code>. Alterações são salvas na nuvem.`);
+        } else {
+            updateFirebaseStatus('offline',
+                'Modo Local (localStorage). Edite o arquivo <code>firebase-init.js</code> e cole suas credenciais para ativar a nuvem.');
+        }
+        return !!ok;
+    } catch (err) {
+        console.error('bootstrapFirebase error', err);
+        firebaseEnabledRuntime = false;
+        updateFirebaseStatus('error',
+            `⚠️ Erro Firebase: ${err.message}. Alterando para modo Local.`);
+        return false;
+    }
+}
+
+async function loadProductsFromFirebaseOrFallback() {
+    if (firebaseEnabledRuntime && window.FirebaseAPI) {
+        const r = await window.FirebaseAPI.loadCestas();
+        if (r.ok && Array.isArray(r.list) && r.list.length > 0) {
+            const merged = r.list.filter(p => p.ativo !== false);
+            if (merged.length > 0) {
+                products = merged;
+                saveToStorage(STORAGE_KEYS.PRODUCTS, products);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+async function bindProductImageUploader(editingProduct) {
+    pendingImageFile = null;
+    if (pendingObjectUrl) { try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null; }
+    const fileInput   = document.getElementById('pImageFile');
+    const fileLabel   = document.getElementById('pImageFileLabel');
+    const previewWrap = document.getElementById('pImagePreviewWrap');
+    const previewImg  = document.getElementById('pImagePreview');
+    const previewClear= document.getElementById('pImageClear');
+    const statusEl    = document.getElementById('pUploadStatus');
+    const progressFill= document.getElementById('pUploadProgressFill');
+    const progressText= document.getElementById('pUploadText');
+    const pImageInput = document.getElementById('pImage');
+
+    if (fileLabel) fileLabel.textContent = 'Clique para selecionar foto';
+    if (previewWrap) previewWrap.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
+    if (progressFill) progressFill.style.width = '0%';
+    if (progressText) {
+        progressText.className = 'upload-status-text';
+        progressText.textContent = 'Enviando imagem...';
+    }
+
+    if (editingProduct && editingProduct.image && !pImageInput.value) {
+        pImageInput.value = editingProduct.image;
+    }
+    if (editingProduct && editingProduct.image) {
+        previewWrap.style.display = 'block';
+        previewImg.src = editingProduct.image;
+    }
+
+    fileInput.onchange = () => {
+        const f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        if (f.size > 5 * 1024 * 1024) {
+            alert('A imagem é muito grande! Escolha uma foto de até 5MB.');
+            fileInput.value = '';
+            return;
+        }
+        if (!/^image\//.test(f.type || '')) {
+            alert('Por favor selecione uma imagem (PNG, JPG ou WebP).');
+            fileInput.value = '';
+            return;
+        }
+        pendingImageFile = f;
+        if (pendingObjectUrl) try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {}
+        pendingObjectUrl = URL.createObjectURL(f);
+        previewWrap.style.display = 'block';
+        previewImg.src = pendingObjectUrl;
+        fileLabel.textContent = `${f.name} (${(f.size/1024).toFixed(1)} KB)`;
+    };
+
+    previewClear.onclick = () => {
+        pendingImageFile = null;
+        if (pendingObjectUrl) { try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null; }
+        fileInput.value = '';
+        previewWrap.style.display = 'none';
+        fileLabel.textContent = 'Clique para selecionar foto';
+    };
+}
+
+function resetUploadUI() {
+    const statusEl    = document.getElementById('pUploadStatus');
+    const progressFill= document.getElementById('pUploadProgressFill');
+    const progressText= document.getElementById('pUploadText');
+    const previewWrap = document.getElementById('pImagePreviewWrap');
+    const fileLabel   = document.getElementById('pImageFileLabel');
+    const fileInput   = document.getElementById('pImageFile');
+    const previewImg  = document.getElementById('pImagePreview');
+
+    if (statusEl) statusEl.style.display = 'none';
+    if (progressFill) progressFill.style.width = '0%';
+    if (progressText) progressText.className = 'upload-status-text';
+    if (previewWrap) previewWrap.style.display = 'none';
+    if (previewImg) previewImg.src = '';
+    if (fileLabel) fileLabel.textContent = 'Clique para selecionar foto';
+    if (fileInput) fileInput.value = '';
+    if (pendingObjectUrl) { try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null; }
+    pendingImageFile = null;
+}
+
+function overrideOpenEntityForm() {
+    const orig = openEntityForm;
+    openEntityForm = function (entity, editId) {
+        orig(entity, editId);
+        if (entity === 'product') {
+            const editing = editId ? products.find(p => p.id === editId) : null;
+            bindProductImageUploader(editing);
+        }
+    };
+}
+
+function overrideCloseEntityForm() {
+    const orig = closeEntityForm;
+    closeEntityForm = function (entity) {
+        orig(entity);
+        if (entity === 'product') resetUploadUI();
+    };
+}
+
+overrideOpenEntityForm();
+overrideCloseEntityForm();
+
+async function saveEntityProductAsyncOverride() {
+    const saveBtn = document.getElementById('saveProduct');
+    const statusEl     = document.getElementById('pUploadStatus');
+    const progressFill = document.getElementById('pUploadProgressFill');
+    const progressText = document.getElementById('pUploadText');
+    const pImageInput  = document.getElementById('pImage');
+
+    let image = pImageInput.value.trim();
+    const name = document.getElementById('pName').value.trim();
+    const itemsText = document.getElementById('pItems').value;
+    const desc = document.getElementById('pDesc').value.trim();
+    const price = parseFloat(document.getElementById('pPrice').value);
+
+    if (!name || !price || isNaN(price)) {
+        alert('Preencha nome e preço da cesta.');
+        return;
+    }
+    const items = itemsText.split('\n').map(i => i.trim()).filter(i => i.length > 0);
+
+    if (pendingImageFile && firebaseEnabledRuntime && window.FirebaseAPI) {
+        saveBtn.disabled = true;
+        const prevBtnText = saveBtn.textContent;
+        saveBtn.textContent = '⌛ Enviando...';
+        if (statusEl) statusEl.style.display = 'flex';
+        if (progressText) {
+            progressText.className = 'upload-status-text';
+            progressText.textContent = 'Enviando imagem para o Firebase...';
+        }
+        try {
+            const up = await window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
+                if (progressFill) progressFill.style.width = pct + '%';
+                if (progressText) progressText.textContent = `Enviando imagem... ${pct}%`;
+            });
+            image = up.url;
+            pImageInput.value = image;
+            if (progressText) {
+                progressText.className = 'upload-status-text success';
+                progressText.textContent = '✅ Imagem enviada com sucesso! Salvando cesta...';
+            }
+        } catch (err) {
+            console.error(err);
+            if (progressText) {
+                progressText.className = 'upload-status-text error';
+                progressText.textContent = '❌ Erro no upload: ' + err.message;
+            }
+            alert('Não foi possível enviar a imagem. Tente novamente ou use uma URL direta.\n\nDetalhes: ' + err.message);
+            saveBtn.disabled = false;
+            saveBtn.textContent = prevBtnText;
+            return;
+        }
+    } else if (pendingImageFile && !firebaseEnabledRuntime) {
+        alert('⚠️ Firebase não está configurado! Para enviar fotos pela interface, preencha as credenciais no arquivo firebase-init.js.\n\nEnquanto isso, cole uma URL de imagem pública no campo "URL da Imagem".');
+    }
+
+    const obj = {
+        name,
+        image: image || 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=beautiful%20gift%20basket%20pink%20wine%20decoration%20ribbon&image_size=landscape_4_3',
+        items,
+        description: desc,
+        price
+    };
+
+    if (adminEditingId) {
+        const idx = products.findIndex(p => p.id === adminEditingId);
+        if (idx !== -1) products[idx] = { ...products[idx], ...obj };
+    } else {
+        obj.id = generateId();
+        products.push(obj);
+    }
+
+    saveToStorage(STORAGE_KEYS.PRODUCTS, products);
+
+    if (firebaseEnabledRuntime && window.FirebaseAPI) {
+        try {
+            await window.FirebaseAPI.saveCesta(
+                { id: adminEditingId || obj.id, ...obj },
+                String(adminEditingId || obj.id)
+            );
+        } catch (err) {
+            console.warn('Falhou ao salvar no Firestore, salvo localmente apenas.', err);
+            updateFirebaseStatus('error', `⚠️ Erro ao salvar na nuvem: ${err.message}. Os dados foram salvos apenas localmente.`);
+        }
+    }
+
+    renderProducts();
+    renderAdminProducts();
+    closeEntityForm('product');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Salvar'; }
+}
+
+async function deleteEntityAsyncOverride(entity, id) {
+    const msgMap = {
+        product: 'Tem certeza que deseja excluir esta cesta?',
+        addon: 'Tem certeza que deseja excluir este adicional?',
+        delivery: 'Tem certeza que deseja excluir esta taxa de entrega?',
+        coupon: 'Tem certeza que deseja excluir este cupom?'
+    };
+    if (!confirm(msgMap[entity] || 'Confirmar exclusão?')) return;
+
+    if (entity === 'product') {
+        products = products.filter(p => p.id !== id);
+        saveToStorage(STORAGE_KEYS.PRODUCTS, products);
+        if (firebaseEnabledRuntime && window.FirebaseAPI) {
+            try { await window.FirebaseAPI.deleteCesta(id); }
+            catch (err) {
+                console.warn('Erro ao excluir cesta na nuvem:', err);
+                updateFirebaseStatus('error', `⚠️ Erro ao excluir na nuvem: ${err.message}`);
+            }
+        }
+        renderProducts();
+        renderAdminProducts();
+    } else if (entity === 'addon') {
+        addons = addons.filter(a => a.id !== id);
+        saveToStorage(STORAGE_KEYS.ADDONS, addons);
+        renderAdminAddons();
+    } else if (entity === 'delivery') {
+        deliveryRates = deliveryRates.filter(d => d.id !== id);
+        saveToStorage(STORAGE_KEYS.DELIVERY, deliveryRates);
+        renderAdminDelivery();
+        renderDeliveryOptions();
+    } else if (entity === 'coupon') {
+        coupons = coupons.filter(c => c.id !== id);
+        saveToStorage(STORAGE_KEYS.COUPONS, coupons);
+        renderAdminCoupons();
+    }
+}
+
+async function syncLocalProductsToFirebase() {
+    const btn = document.getElementById('btnSyncFirebase');
+    if (!firebaseEnabledRuntime || !window.FirebaseAPI) {
+        alert('🔌 Firebase não configurado. Cole suas credenciais no arquivo firebase-init.js, recarregue a página e tente novamente.');
+        return;
+    }
+    if (!confirm(`Deseja enviar suas ${products.length} cestas locais para o Firebase?\n(Isto sobrescreve cestas de mesmo ID.)`)) return;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizando...'; }
+    updateFirebaseStatus('online', '⏳ Sincronizando cestas locais com o Firebase...');
+    const r = await window.FirebaseAPI.syncLocalToFirebase(products);
+    if (r.ok) {
+        updateFirebaseStatus('online',
+            `✅ Sincronização concluída! <b>${r.okCount}</b> cestas enviadas${r.fail ? ` · ${r.fail} falhas.` : '.'}`);
+        alert(`Sincronização concluída!\n\n✅ ${r.okCount} cestas enviadas com sucesso${r.fail ? `\n⚠️ ${r.fail} cestas falharam` : ''}.`);
+    } else {
+        alert('Erro na sincronização: ' + r.message);
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '☁️ Sincronizar'; }
+}
+
+async function bindFirebaseUI() {
+    const syncBtn = document.getElementById('btnSyncFirebase');
+    if (syncBtn) syncBtn.addEventListener('click', syncLocalProductsToFirebase);
+}
+
+/* ====== Sobrescreve os handlers globais (antes do DOMContentLoaded chamar init()) ====== */
+window.saveEntityProductSyncLegacy = saveEntityProduct;
+saveEntityProduct = saveEntityProductAsyncOverride;
+
+window.deleteEntitySyncLegacy = deleteEntity;
+deleteEntity = deleteEntityAsyncOverride;
+
+document.addEventListener('DOMContentLoaded', async function () {
+    init(); // inicializa o resto do site como sempre
+    bindFirebaseUI();
+    const fbOk = await bootstrapFirebase();
+    if (fbOk) {
+        // primeiro carregamento: se a nuvem tiver dados, usa eles
+        await loadProductsFromFirebaseOrFallback();
+        renderProducts();
+        try { renderAdminProducts(); } catch(_) {}
+    }
+});
+
