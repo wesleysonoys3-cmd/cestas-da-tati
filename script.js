@@ -972,11 +972,54 @@ function closeModal(modalId) {
 
 /* ============================================================
    🔥 INTEGRAÇÃO FIREBASE (Fallback automático para localStorage)
+   + UPLOAD LOCAL SEM FIREBASE (imagens comprimidas em Base64)
    ============================================================ */
 
 let firebaseEnabledRuntime = false;
 let pendingImageFile = null;
 let pendingObjectUrl = null;
+let pendingBase64Image = null;
+
+/* ---------- Helper: Comprime imagem e converte para Base64 (Funciona SEM Firebase!) ---------- */
+function compressImageToBase64(file, maxWidth = 1200, quality = 0.78) {
+    return new Promise((resolve, reject) => {
+        try {
+            if (!file) return resolve(null);
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onerror = () => reject(new Error('Arquivo inválido — use JPG ou PNG.'));
+                img.onload = () => {
+                    let w = img.naturalWidth;
+                    let h = img.naturalHeight;
+                    if (w > maxWidth) {
+                        h = Math.round((h * maxWidth) / w);
+                        w = maxWidth;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return reject(new Error('Navegador não suporta Canvas.'));
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const out = canvas.toDataURL('image/jpeg', quality);
+                    resolve(out);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+function kbOfBase64(b64) {
+    if (!b64) return 0;
+    const base64Length = b64.indexOf(',') !== -1 ? b64.split(',')[1].length : b64.length;
+    return Math.round((base64Length * 3) / 4 / 1024);
+}
 
 function updateFirebaseStatus(state, msg) {
     const el = document.getElementById('fbStatus');
@@ -993,24 +1036,24 @@ async function bootstrapFirebase() {
     try {
         if (!window.FirebaseAPI) {
             updateFirebaseStatus('offline',
-                'Firebase não carregou — modo Local ativo. Recarregue a página ou confira a conexão.');
+                'Firebase SDK não carregou. <b>Upload de fotos FUNCIONA</b> (salvas em memória local), mas para aparecer em todos os dispositivos é necessário configurar o Firebase.');
             return false;
         }
         const ok = await window.FirebaseAPI.init();
         firebaseEnabledRuntime = !!ok;
         if (ok) {
             updateFirebaseStatus('online',
-                `☁️ Conectado ao Firebase · Projeto: <code>${window.FirebaseAPI.CONFIG.projectId}</code>. Alterações são salvas na nuvem.`);
+                `☁️ Conectado ao Firebase · Projeto: <code>${window.FirebaseAPI.CONFIG.projectId}</code>. Alterações são salvas na nuvem e aparecem em TODOS os dispositivos.`);
         } else {
             updateFirebaseStatus('offline',
-                'Modo Local (localStorage). Edite o arquivo <code>firebase-init.js</code> e cole suas credenciais para ativar a nuvem.');
+                'Modo Local ativado. ✅ <b>Upload de fotos funciona normalmente</b> (as imagens são comprimidas e salvas no seu navegador). Atenção: cestas/fotos criadas aqui só aparecem NESTE dispositivo. Para aparecer em outros, configure o Firebase no arquivo <code>firebase-init.js</code>.');
         }
         return !!ok;
     } catch (err) {
         console.error('bootstrapFirebase error', err);
         firebaseEnabledRuntime = false;
         updateFirebaseStatus('error',
-            `⚠️ Erro Firebase: ${err.message}. Alterando para modo Local.`);
+            `⚠️ Erro Firebase: ${err.message}. Alterando para Modo Local (upload de fotos continua funcionando).`);
         return false;
     }
 }
@@ -1060,7 +1103,7 @@ async function bindProductImageUploader(editingProduct) {
         previewImg.src = editingProduct.image;
     }
 
-    fileInput.onchange = () => {
+    fileInput.onchange = async () => {
         const f = fileInput.files && fileInput.files[0];
         if (!f) return;
         if (f.size > 5 * 1024 * 1024) {
@@ -1074,19 +1117,49 @@ async function bindProductImageUploader(editingProduct) {
             return;
         }
         pendingImageFile = f;
+        pendingBase64Image = null;
         if (pendingObjectUrl) try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {}
         pendingObjectUrl = URL.createObjectURL(f);
         previewWrap.style.display = 'block';
         previewImg.src = pendingObjectUrl;
         fileLabel.textContent = `${f.name} (${(f.size/1024).toFixed(1)} KB)`;
+
+        if (!firebaseEnabledRuntime) {
+            try {
+                if (statusEl) {
+                    statusEl.style.display = 'flex';
+                    if (progressFill) progressFill.style.width = '45%';
+                    if (progressText) {
+                        progressText.className = 'upload-status-text';
+                        progressText.textContent = '🖼️ Processando imagem (salvando sem Firebase)...';
+                    }
+                }
+                const b64 = await compressImageToBase64(f, 1200, 0.78);
+                pendingBase64Image = b64;
+                if (progressFill) progressFill.style.width = '100%';
+                if (progressText) {
+                    progressText.className = 'upload-status-text success';
+                    progressText.textContent = `✅ Foto pronta! Tamanho: ~${kbOfBase64(b64)} KB (ao salvar, ela entra direto na cesta).`;
+                }
+            } catch (err) {
+                pendingBase64Image = null;
+                if (progressText) {
+                    progressText.className = 'upload-status-text error';
+                    progressText.textContent = '❌ Erro ao processar: ' + err.message;
+                }
+                alert('Erro ao preparar a imagem: ' + err.message);
+            }
+        }
     };
 
     previewClear.onclick = () => {
         pendingImageFile = null;
+        pendingBase64Image = null;
         if (pendingObjectUrl) { try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null; }
         fileInput.value = '';
         previewWrap.style.display = 'none';
         fileLabel.textContent = 'Clique para selecionar foto';
+        if (statusEl) statusEl.style.display = 'none';
     };
 }
 
@@ -1108,6 +1181,7 @@ function resetUploadUI() {
     if (fileInput) fileInput.value = '';
     if (pendingObjectUrl) { try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null; }
     pendingImageFile = null;
+    pendingBase64Image = null;
 }
 
 function overrideOpenEntityForm() {
@@ -1151,39 +1225,79 @@ async function saveEntityProductAsyncOverride() {
     }
     const items = itemsText.split('\n').map(i => i.trim()).filter(i => i.length > 0);
 
-    if (pendingImageFile && firebaseEnabledRuntime && window.FirebaseAPI) {
+    // ----------- UPLOAD / CONVERSÃO DA IMAGEM -----------
+    if (pendingImageFile) {
         saveBtn.disabled = true;
         const prevBtnText = saveBtn.textContent;
-        saveBtn.textContent = '⌛ Enviando...';
-        if (statusEl) statusEl.style.display = 'flex';
-        if (progressText) {
-            progressText.className = 'upload-status-text';
-            progressText.textContent = 'Enviando imagem para o Firebase...';
-        }
-        try {
-            const up = await window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
-                if (progressFill) progressFill.style.width = pct + '%';
-                if (progressText) progressText.textContent = `Enviando imagem... ${pct}%`;
-            });
-            image = up.url;
-            pImageInput.value = image;
+        saveBtn.textContent = '⌛ Processando...';
+
+        if (firebaseEnabledRuntime && window.FirebaseAPI) {
+            // --- Firebase configurado: envia pro Storage ---
+            if (statusEl) statusEl.style.display = 'flex';
             if (progressText) {
-                progressText.className = 'upload-status-text success';
-                progressText.textContent = '✅ Imagem enviada com sucesso! Salvando cesta...';
+                progressText.className = 'upload-status-text';
+                progressText.textContent = 'Enviando imagem para o Firebase...';
             }
-        } catch (err) {
-            console.error(err);
-            if (progressText) {
-                progressText.className = 'upload-status-text error';
-                progressText.textContent = '❌ Erro no upload: ' + err.message;
+            try {
+                const up = await window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
+                    if (progressFill) progressFill.style.width = pct + '%';
+                    if (progressText) progressText.textContent = `Enviando imagem... ${pct}%`;
+                });
+                image = up.url;
+                pImageInput.value = image;
+                if (progressText) {
+                    progressText.className = 'upload-status-text success';
+                    progressText.textContent = '✅ Imagem enviada! Salvando cesta...';
+                }
+            } catch (err) {
+                console.error(err);
+                if (progressText) {
+                    progressText.className = 'upload-status-text error';
+                    progressText.textContent = '❌ Erro no upload: ' + err.message;
+                }
+                alert('Não foi possível enviar a imagem para o Firebase.\n\nDetalhes: ' + err.message + '\n\nDica: confira as Regras do Storage no Console.');
+                saveBtn.disabled = false;
+                saveBtn.textContent = prevBtnText;
+                return;
             }
-            alert('Não foi possível enviar a imagem. Tente novamente ou use uma URL direta.\n\nDetalhes: ' + err.message);
-            saveBtn.disabled = false;
-            saveBtn.textContent = prevBtnText;
-            return;
+        } else {
+            // --- SEM Firebase: usa Base64 LOCAL (comprime e salva no produto) ---
+            if (!pendingBase64Image) {
+                if (statusEl) {
+                    statusEl.style.display = 'flex';
+                    if (progressFill) progressFill.style.width = '50%';
+                    if (progressText) {
+                        progressText.className = 'upload-status-text';
+                        progressText.textContent = '🖼️ Processando imagem (salvando localmente)...';
+                    }
+                }
+                try {
+                    pendingBase64Image = await compressImageToBase64(pendingImageFile, 1200, 0.78);
+                } catch (err) {
+                    console.error(err);
+                    if (progressText) {
+                        progressText.className = 'upload-status-text error';
+                        progressText.textContent = '❌ Erro: ' + err.message;
+                    }
+                    alert('Erro ao processar a imagem: ' + err.message);
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = prevBtnText;
+                    return;
+                }
+            }
+            image = pendingBase64Image;
+            pImageInput.value = ''; // não preenchemos o URL field, pois vai inline
+            if (statusEl) {
+                if (progressFill) progressFill.style.width = '100%';
+                if (progressText) {
+                    progressText.className = 'upload-status-text success';
+                    progressText.textContent = `✅ Foto incluída! Tamanho final ~${kbOfBase64(image)} KB.`;
+                }
+            }
         }
-    } else if (pendingImageFile && !firebaseEnabledRuntime) {
-        alert('⚠️ Firebase não está configurado! Para enviar fotos pela interface, preencha as credenciais no arquivo firebase-init.js.\n\nEnquanto isso, cole uma URL de imagem pública no campo "URL da Imagem".');
+
+        saveBtn.textContent = prevBtnText;
+        saveBtn.disabled = false;
     }
 
     const obj = {
