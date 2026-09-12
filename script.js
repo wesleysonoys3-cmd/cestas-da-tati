@@ -1411,7 +1411,7 @@ async function bootstrapFirebase() {
 
             /* ====== PING RÁPIDO (6s max) em Storage + Firestore antes de qualquer operação ====== */
             try {
-                console.log('[bootstrapFirebase] Rodando ping rápido Storage+Firestore para validar regras/bucket...');
+                console.log('[bootstrapFirebase] Rodando ping rápido FIRESTORE (Storage é opcional hoje, não bloqueia)...');
                 const ping = window.FirebaseAPI.pingFirebaseServices
                     ? await Promise.race([
                           window.FirebaseAPI.pingFirebaseServices(),
@@ -1419,31 +1419,47 @@ async function bootstrapFirebase() {
                       ])
                     : { ok: true, code: 'ping_not_available', message: 'Ping não disponível nesta versão do firebase-init.js.' };
 
-                if (!ping || !ping.ok) {
-                    console.warn('[bootstrapFirebase] PING detectou problema:', ping && ping.code, ping && ping.message);
+                // ====== REGRA NOVA: Storage não é mais obrigatório. ======
+                // Se ping.ok === false, VAMOS CHECAR SE FALHA É SÓ NO STORAGE.
+                const storageOnlyCodes = new Set(['storage_warn','bucket_not_found','permission_denied','storage_error','timeout']);
+                const hasFirestoreRealFailure = ping && !ping.ok && (
+                    ping.code === 'firestore_permission_denied' ||
+                    ping.code === 'firestore_disabled' ||
+                    ping.code === 'firestore_error' ||
+                    (ping && ping.message && /firestore/i.test(ping.message) && !/storage/i.test(ping.code || ''))
+                );
+                const isOnlyStorageWarning = ping && (
+                    (ping.ok && ping.code && /storage/i.test(String(ping.code))) ||
+                    (!ping.ok && !hasFirestoreRealFailure && storageOnlyCodes.has(ping.code))
+                );
+                const isPingReallyFailed = (!ping || !ping.ok) && !isOnlyStorageWarning && hasFirestoreRealFailure;
+
+                if (isOnlyStorageWarning) {
+                    console.log('[bootstrapFirebase] PING OK (Storage warning, NÃO BLOQUEIA):', ping && ping.code, ping && ping.message);
+                    showFirebaseSuccess('Conexão validada: FIRESTORE 100% ativo e sincronia em tempo real ligada! (Storage aviso ignorado, não usamos Storage hoje). 🎉');
+                    setTimeout(() => {
+                        const bn = document.getElementById('fbStatusBanner');
+                        if (bn) bn.style.display = 'none';
+                    }, 8000);
+                } else if (isPingReallyFailed) {
+                    console.warn('[bootstrapFirebase] PING detectou problema FIRESTORE:', ping && ping.code, ping && ping.message);
                     const extraLinkFs = ping && (ping.code === 'firestore_permission_denied' || ping.code === 'firestore_disabled')
-                        ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Corrigir Firestore</a>'
+                        ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Abrir Firestore → Regras → Publicar</a>'
                         : '';
-                    const extraLinkSt = ping && (ping.code === 'bucket_not_found' || ping.code === 'permission_denied' || ping.code === 'storage_error')
-                        ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Abrir Storage / Upgrade</a>'
-                        : '';
-                    const extraWarnSt = ping && ping.code === 'bucket_not_found'
-                        ? ' <br><small style="opacity:.9;display:block;margin-top:4px;">DICA: no Console apareceu o botão AMARELO "Fazer upgrade do projeto"? Clique nele! Plano Blaze = Spark gratuito com Billing backup — 5GB GRÁTIS de Storage, ZERO custo para cestas pequenas.</small>'
-                        : '';
-                    showFirebaseError('Configuração (Storage/Firestore)', ping && ping.rawError,
+                    showFirebaseError('Configuração (Firestore OBRIGATÓRIO)', ping && ping.rawError,
                         '<b>Atenção:</b> ' + (ping && ping.message ? ping.message : 'Não foi possível validar os serviços do Firebase.') +
-                        extraLinkSt + extraLinkFs + extraWarnSt +
+                        extraLinkFs +
                         ' · Sem resolver isso, nenhuma cesta será salva na nuvem.');
                 } else {
                     console.log('[bootstrapFirebase] PING OK → ' + (ping.message || 'Serviços prontos.'));
-                    showFirebaseSuccess('Conexão validada: Firebase Storage + Firestore ativos e com regras publicadas. Você já pode cadastrar cestas! 🎉');
+                    showFirebaseSuccess('Conexão validada: Firebase (Firestore 100% OK + sincronia em tempo real). Você já pode cadastrar cestas! 🎉');
                     setTimeout(() => {
                         const bn = document.getElementById('fbStatusBanner');
                         if (bn) bn.style.display = 'none';
                     }, 6000);
                 }
             } catch (pingErr) {
-                console.warn('[bootstrapFirebase] Ping falhou (timeout/erro não esperado):', pingErr);
+                console.warn('[bootstrapFirebase] Ping falhou (timeout/erro não esperado, NÃO BLOQUEIA pois o onSnapshot funciona como validação):', pingErr);
             }
 
             /* ====== onSnapshot EM TEMPO REAL: ATUALIZA A VITRINE E PAINEL ADMIN AUTOMATICAMENTE ====== */
@@ -1584,9 +1600,59 @@ async function importLocalProductsToFirebase() {
     if (btn) { btn.disabled = false; btn.textContent = '☁️ Importar Cestas Locais → Nuvem'; }
 }
 
+/* Helper: Comprime imagem via Canvas (max w/h=1280, q=0.82 JPEG) e retorna Base64. Suporta PNG/JPG/WEBP. */
+async function compressImageFileToBase64(file, onProgress, maxSizePx) {
+    maxSizePx = maxSizePx || 1280;
+    const quality = 0.82;
+    return new Promise((resolve, reject) => {
+        try {
+            const reader = new FileReader();
+            if (typeof onProgress === 'function') onProgress(5);
+            reader.onerror = () => reject(new Error('Falha ao ler imagem selecionada (FileReader).'));
+            reader.onload = (e) => {
+                if (typeof onProgress === 'function') onProgress(15);
+                const img = new Image();
+                img.onerror = () => reject(new Error('Formato de imagem inválido. Use JPG, PNG ou WebP.'));
+                img.onload = () => {
+                    if (typeof onProgress === 'function') onProgress(30);
+                    try {
+                        let w = img.naturalWidth, h = img.naturalHeight;
+                        const scale = Math.min(1, maxSizePx / Math.max(w, h));
+                        w = Math.max(1, Math.round(w * scale));
+                        h = Math.max(1, Math.round(h * scale));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) { reject(new Error('Canvas não suportado no navegador.')); return; }
+                        ctx.drawImage(img, 0, 0, w, h);
+                        if (typeof onProgress === 'function') onProgress(60);
+                        // Cede um tick pro UI antes de comprimir
+                        setTimeout(() => {
+                            try {
+                                const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                                if (typeof onProgress === 'function') onProgress(100);
+                                resolve({ base64: dataUrl, width: w, height: h, sizeBytes: Math.round((dataUrl.length * 3)/4) });
+                            } catch (eCanvas2) {
+                                reject(new Error('Falha ao comprimir imagem (canvas.toDataURL): ' + eCanvas2.message));
+                            }
+                        }, 10);
+                    } catch (eCanvas) {
+                        reject(new Error('Falha ao desenhar imagem no canvas: ' + eCanvas.message));
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
 async function bindProductImageUploader(editingProduct) {
     pendingImageFile = null;
-    pendingBase64Image = null; // NÃO USAMOS MAIS Base64 (modo 100% nuvem)
+    pendingBase64Image = null;
     if (pendingObjectUrl) { try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null; }
     const fileInput   = document.getElementById('pImageFile');
     const fileLabel   = document.getElementById('pImageFileLabel');
@@ -1604,7 +1670,7 @@ async function bindProductImageUploader(editingProduct) {
     if (progressFill) progressFill.style.width = '0%';
     if (progressText) {
         progressText.className = 'upload-status-text';
-        progressText.textContent = 'Ao clicar em 💾 Salvar abaixo, a foto será enviada para o Storage do Firebase.';
+        progressText.textContent = 'Ao clicar em 💾 Salvar abaixo, a foto é comprimida e salva DIRETAMENTE no Firestore (Base64). Nenhum upload externo — 100% sincronia em tempo real.';
     }
 
     if (editingProduct && editingProduct.image && !pImageInput.value) {
@@ -1618,8 +1684,8 @@ async function bindProductImageUploader(editingProduct) {
     fileInput.onchange = async () => {
         const f = fileInput.files && fileInput.files[0];
         if (!f) return;
-        if (f.size > 5 * 1024 * 1024) {
-            alert('A imagem é muito grande! Escolha uma foto de até 5MB.');
+        if (f.size > 10 * 1024 * 1024) {
+            alert('A imagem é muito grande! Escolha uma foto de até 10MB (ela será comprimida automaticamente para JPEG 1280px).');
             fileInput.value = '';
             return;
         }
@@ -1628,8 +1694,9 @@ async function bindProductImageUploader(editingProduct) {
             fileInput.value = '';
             return;
         }
+        // Comprime IMEDIATAMENTE ao selecionar, para feedback rápido e já deixar pronto para salvar.
         pendingImageFile = f;
-        pendingBase64Image = null; // desativado em modo 100% nuvem
+        pendingBase64Image = null;
         if (pendingObjectUrl) try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {}
         pendingObjectUrl = URL.createObjectURL(f);
         previewWrap.style.display = 'block';
@@ -1637,13 +1704,38 @@ async function bindProductImageUploader(editingProduct) {
         fileLabel.textContent = `${f.name} (${(f.size/1024).toFixed(1)} KB)`;
 
         if (statusEl) statusEl.style.display = 'flex';
-        if (progressFill) progressFill.style.width = '100%';
+        if (progressFill) progressFill.style.width = '0%';
         if (progressText) {
-            progressText.className = 'upload-status-text success';
-            progressText.textContent =
-                '✅ Foto selecionada! (prévia carregada). Ao clicar em 💾 Salvar abaixo, a imagem será enviada para o Firebase Storage.';
+            progressText.className = 'upload-status-text';
+            progressText.textContent = '⏳ Comprimindo imagem (max 1280px, JPEG 82% qualidade)...';
         }
-        console.log('[Upload Imagem] Foto selecionada para upload posterior ao salvar. File:', f.name, 'tamanho KB:', Math.round(f.size/1024));
+        try {
+            const compressed = await compressImageFileToBase64(f, (pct) => {
+                if (progressFill) progressFill.style.width = pct + '%';
+            });
+            pendingBase64Image = compressed.base64;
+            pImageInput.value = compressed.base64;
+            if (progressFill) progressFill.style.width = '100%';
+            if (progressText) {
+                progressText.className = 'upload-status-text success';
+                progressText.textContent = `✅ Foto pronta! (${(compressed.width)}×${compressed.height}, ${(compressed.sizeBytes/1024).toFixed(0)} KB). Ao clicar em 💾 Salvar, ela é gravada no Firestore e aparece em tempo real em todos os dispositivos.`;
+            }
+            console.log('[Upload Imagem] Foto comprimida para Base64: tamanho KB=' + Math.round(compressed.sizeBytes/1024) + ' dimensoes=' + compressed.width + 'x' + compressed.height);
+        } catch (errCompress) {
+            console.error('[Upload Imagem] Erro ao comprimir:', errCompress);
+            if (progressFill) progressFill.style.width = '0%';
+            if (progressText) {
+                progressText.className = 'upload-status-text error';
+                progressText.textContent = '❌ Erro ao comprimir: ' + errCompress.message;
+            }
+            alert('❌ Erro ao comprimir a imagem: ' + errCompress.message + '\n\nSugestão: tente uma foto JPG/PNG menor.');
+            pendingImageFile = null;
+            pendingBase64Image = null;
+            if (pendingObjectUrl) try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null;
+            previewWrap.style.display = 'none';
+            if (fileInput) fileInput.value = '';
+            if (fileLabel) fileLabel.textContent = 'Clique para selecionar foto';
+        }
     };
 
     previewClear.onclick = () => {
@@ -1654,6 +1746,7 @@ async function bindProductImageUploader(editingProduct) {
         previewWrap.style.display = 'none';
         fileLabel.textContent = 'Clique para selecionar foto';
         if (statusEl) statusEl.style.display = 'none';
+        if (progressFill) progressFill.style.width = '0%';
     };
 }
 
@@ -1748,6 +1841,7 @@ function promiseTimeoutMs(ms, stage, progressFillEl, progressTextEl, startFakePc
     });
 }
 
+
 async function saveEntityProductAsyncOverride() {
     const saveBtn = document.getElementById('saveProduct');
     const statusEl     = document.getElementById('pUploadStatus');
@@ -1757,7 +1851,6 @@ async function saveEntityProductAsyncOverride() {
     const prevBtnText = saveBtn ? saveBtn.textContent : '💾 Salvar';
 
     try {
-        /* ====== PASSO 0: VALIDAÇÕES BÁSICAS ====== */
         const name = document.getElementById('pName').value.trim();
         const itemsText = document.getElementById('pItems').value;
         const desc = document.getElementById('pDesc').value.trim();
@@ -1772,7 +1865,6 @@ async function saveEntityProductAsyncOverride() {
 
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⌛ Salvando na nuvem...'; }
 
-        /* ====== PASSO 1: FIREBASE OBRIGATÓRIO ====== */
         if (!window.FirebaseAPI) {
             throw new Error('SDK do Firebase não foi carregado. Atualize a página (F5) e tente novamente.');
         }
@@ -1786,116 +1878,106 @@ async function saveEntityProductAsyncOverride() {
         }
         console.log('[SALVAR CESTA] Passo 1 OK: Firebase inicializado. Projeto:', window.FirebaseAPI.CONFIG.projectId);
 
-        /* ====== PASSO 1.5: PING RÁPIDO Storage + Firestore (erro em < 6s) ====== */
         if (window.FirebaseAPI.pingFirebaseServices && typeof window.FirebaseAPI.pingFirebaseServices === 'function') {
-            console.log('[SALVAR CESTA] Passo 1.5: Ping rápido Storage/Firestore para validar regras antes de começar upload...');
+            console.log('[SALVAR CESTA] Passo 1.5: Ping rápido FIRESTORE para validar regras antes de gravar...');
             try {
                 const ping = await Promise.race([
                     window.FirebaseAPI.pingFirebaseServices(),
                     new Promise((_, rj) => setTimeout(() => rj(new Error('timeout_ping_preupload_7s')), 7000))
                 ]);
                 if (!ping || !ping.ok) {
-                    console.error('[SALVAR CESTA] Ping detectou problema ANTES do upload:', ping && ping.code, ping && ping.message);
-                    const isBucketMissing = ping && ping.code === 'bucket_not_found';
-                    showFirebaseError('Configuração (pré-salvar)', ping && ping.rawError,
-                        '<b>Impossível salvar agora:</b> ' + (ping && ping.message ? ping.message : 'Não foi possível validar os serviços.') +
-                        (isBucketMissing
-                            ? ' <br><small style="opacity:.9;display:block;margin-top:4px;"><b>DICA ESPECIAL (vimos a sua tela!):</b> O Console do Firebase tem um botão AMARELO "Fazer upgrade do projeto". Clique nesse botão (Plano Blaze). MANTÉM os 5GB GRÁTIS do Plano Spark — só pede cartão como limite de segurança. Nunca vai cobra para cestas pequenas! Não tenha medo!</small>' : '') +
-                        (ping && (ping.code === 'bucket_not_found' || ping.code === 'permission_denied' || ping.code === 'storage_error')
-                            ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Storage / Upgrade</a>' : '') +
-                        (ping && (ping.code === 'firestore_permission_denied' || ping.code === 'firestore_disabled')
-                            ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Firestore</a>' : ''));
-                    alert(
-                        '❌ ANTES DE SALVAR — VALIDAÇÃO DO FIREBASE REPROVOU:\n\n' +
-                        (ping && ping.message ? ping.message : 'Configuração inválida.') + '\n\n' +
-                        (isBucketMissing
-                            ? '🚨 IMPORTANTE (VIMOS SUA TELA DO FIREBASE:\n' +
-                              '→ Tem um botão AMARELO escrito "Fazer upgrade do projeto".\n' +
-                              '→ VOCÊ PRECISA CLICAR NELE, ESCOLHER O "Plano Blaze (Pay-as-you-go)".\n' +
-                              '→ NÃO TENHA MEDO: Plano Blaze = MANTÉM 5GB DE STORAGE GRÁTIS + 1GB DOWNLOAD/DIA GRÁTIS.\n' +
-                              '→ SÓ COBRA ALGO SE VOCÊ ULTRAPASSAR ESSES LIMITES (o que não vai acontecer com cestas pequenas).\n' +
-                              '→ Pede CPF + cartão de crédito para limite (R$0 cobrado como teste, depois estorna).\n\n'
-                            : '') +
-                        'Como corrigir:\n' +
-                        '1) Abra o banner vermelho no topo (tem links clicáveis diretos)\n' +
-                        '2) Ou abra manualmente:\n' +
-                        '   Storage → Upgrade/Regras: ' + CONSOLE_STORAGE_RULES + '\n' +
-                        '   Firestore → Regras: ' + CONSOLE_FIRESTORE_RULES + '\n' +
-                        '3) Publique as regras com o botão "PUBLICAR"\n' +
-                        '4) Volte aqui e clique em Salvar de novo. Vai funcionar de primeira! 💪'
+                    const hasFirestoreFailure = ping && (
+                        ping.code === 'firestore_permission_denied' ||
+                        ping.code === 'firestore_disabled' ||
+                        ping.code === 'timeout' ||
+                        ping.code === 'firestore_error'
                     );
-                    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
-                    return;
+                    if (!ping || hasFirestoreFailure) {
+                        console.error('[SALVAR CESTA] Ping detectou problema FIRESTORE:', ping && ping.code, ping && ping.message);
+                        showFirebaseError('Configuração (pré-salvar)', ping && ping.rawError,
+                            '<b>Impossível salvar agora:</b> ' + (ping && ping.message ? ping.message : 'Não foi possível validar os serviços.') +
+                            (ping && (ping.code === 'firestore_permission_denied' || ping.code === 'firestore_disabled')
+                                ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Firestore (Publicar Regras)</a>' : ''));
+                        alert(
+                            '❌ ANTES DE SALVAR — VALIDAÇÃO DO FIRESTORE REPROVOU:\n\n' +
+                            (ping && ping.message ? ping.message : 'Configuração inválida.') + '\n\n' +
+                            'Como corrigir (apenas 2 passos):\n' +
+                            '1) Abra: ' + CONSOLE_FIRESTORE_RULES + '\n' +
+                            '2) Cole as regras (rules_version = "2" ... allow read, create, update, delete: if true)\n' +
+                            '3) CLIQUE NO BOTÃO AZUL/VERDE "PUBLICAR" (obrigatório)\n' +
+                            '4) Volte aqui e clique em 💾 Salvar de novo! 💪'
+                        );
+                        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
+                        return;
+                    }
+                    console.log('[SALVAR CESTA] Ping retornou storage_warn (Storage não ativado) — OK, não usamos mais Storage. Continuando...');
                 } else {
-                    console.log('[SALVAR CESTA] Passo 1.5 OK: Ping validou Storage+Firestore prontos.');
+                    console.log('[SALVAR CESTA] Passo 1.5 OK: Ping validou Firestore pronto.');
                 }
             } catch (pingErr) {
-                console.warn('[SALVAR CESTA] Ping pré-save falhou (timeout/erro não esperado). Vamos continuar mesmo assim e usar timeouts do upload/save.', pingErr);
+                console.warn('[SALVAR CESTA] Ping pré-save falhou (timeout/erro não esperado). Continuando usando timeouts do save.', pingErr);
             }
         }
 
-        /* ====== PASSO 2: UPLOAD DA IMAGEM (se houver arquivo novo) ====== */
-        let image = pImageInput.value.trim();
-
-        if (pendingImageFile) {
+        let image = '';
+        if (pendingBase64Image && /^data:image\//i.test(pendingBase64Image)) {
+            image = pendingBase64Image;
+            pImageInput.value = image;
+            console.log('[SALVAR CESTA] Passo 2: Usando imagem BASE64 recém-comprimida. Tamanho KB:', Math.round(image.length / 1024 * 3 / 4));
+            if (progressText) {
+                progressText.className = 'upload-status-text success';
+                progressText.textContent = '✅ Foto comprimida pronta. Gravando dados da cesta no Firestore...';
+            }
+            if (progressFill) progressFill.style.width = '70%';
+        } else if (pendingImageFile) {
+            console.log('[SALVAR CESTA] Passo 2: pendingImageFile existe mas Base64 não foi gerado. Comprimindo AGORA...');
             if (statusEl) statusEl.style.display = 'flex';
-            if (progressFill) progressFill.style.width = '0%';
+            if (progressFill) progressFill.style.width = '10%';
             if (progressText) {
                 progressText.className = 'upload-status-text';
-                progressText.textContent = '☁️ Enviando imagem para o Firebase Storage... (timeout ' + Math.round(STORAGE_TIMEOUT_MS/1000) + 's)';
+                progressText.textContent = '⏳ Comprimindo imagem (max 1280px, JPEG 82% qualidade)...';
             }
-
-            console.log('[SALVAR CESTA] Passo 2: Iniciando upload da imagem. Tamanho KB:', Math.round(pendingImageFile.size/1024), 'Nome:', pendingImageFile.name);
-
             try {
-                const up = await Promise.race([
-                    window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
-                        if (progressFill) progressFill.style.width = pct + '%';
-                        if (progressText) progressText.textContent = `☁️ Enviando imagem... ${pct}%`;
+                const compressed = await Promise.race([
+                    compressImageFileToBase64(pendingImageFile, (pct) => {
+                        if (progressFill) progressFill.style.width = (10 + Math.round(pct * 0.5)) + '%';
                     }),
-                    promiseTimeoutMs(STORAGE_TIMEOUT_MS, 'enviar a imagem para o Storage', progressFill, progressText, 10, 98)
+                    promiseTimeoutMs(25000, 'comprimir imagem', progressFill, progressText, 10, 60)
                 ]);
-                image = up.url || image;
+                image = compressed.base64;
+                pendingBase64Image = compressed.base64;
                 pImageInput.value = image;
-                console.log('[FIREBASE STORAGE] Imagem enviada com sucesso → path:', up.path, 'url:', up.url);
+                console.log('[SALVAR CESTA] Passo 2 OK: Imagem comprimida AGORA no save. KB:', Math.round(compressed.sizeBytes/1024));
                 if (progressText) {
                     progressText.className = 'upload-status-text success';
-                    progressText.textContent = '✅ Imagem enviada! Salvando cesta no Firestore...';
+                    progressText.textContent = '✅ Foto comprimida. Gravando dados da cesta no Firestore...';
                 }
-            } catch (uploadErr) {
-                console.error('[FIREBASE STORAGE] Erro no upload da imagem:', uploadErr);
-                showFirebaseError('Upload de Imagem (Storage)', uploadErr,
-                    'Não foi possível enviar a foto para o Storage. <b>As REGRAS do Storage provavelmente não estão PUBLICADAS.</b> Abra o Console do Firebase e publique as regras: <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:600;text-decoration:underline;">👉 Abrir Storage → Regras</a>');
-                alert(
-                    '❌ ERRO AO ENVIAR IMAGEM PARA O FIREBASE (Storage)\n\n' +
-                    'Mensagem: ' + (uploadErr.message || uploadErr) + '\n\n' +
-                    '99% DOS CASOS SÃO: as REGRAS DO STORAGE AINDA NÃO FORAM PUBLICADAS.\n\n' +
-                    '👉 FAÇA ISSO AGORA (em 1 minuto):\n' +
-                    '1. Abra: ' + CONSOLE_STORAGE_RULES + '\n' +
-                    '2. Cole o texto das Regras que passamos (allow read: if true...)\n' +
-                    '3. CLIQUE NO BOTÃO "PUBLICAR" (MUITO IMPORTANTE — só salvar não basta)\n' +
-                    '4. Volte aqui e clique em 💾 Salvar novamente =)\n\n' +
-                    '(Se aparecer "Get Started" em vez de Regras, clique em Get Started primeiro para ativar o Storage)'
-                );
+                if (progressFill) progressFill.style.width = '70%';
+            } catch (compressErr) {
+                alert('❌ Erro ao comprimir foto para salvar: ' + compressErr.message + '\n\nSugestão: use uma foto JPG/PNG menor.');
                 if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
                 return;
             }
         } else {
-            console.log('[SALVAR CESTA] Passo 2 OK: Sem imagem nova. Usando imagem URL existente:', image ? (image.length > 60 ? image.slice(0, 60) + '...' : image) : '(nenhuma, usará placeholder)');
+            image = (pImageInput.value || '').trim();
+            console.log('[SALVAR CESTA] Passo 2 OK: Sem imagem nova. Usando imagem existente/URL:', image ? (image.length > 80 ? image.slice(0, 80) + '...' : image) : '(vazia, usará placeholder)');
         }
 
-        /* ====== PASSO 3: SALVAR DADOS NO FIRESTORE ====== */
+        const hasImage = Boolean(image && image.length > 10);
         const obj = {
             name,
-            image: image || 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=beautiful%20gift%20basket%20pink%20wine%20decoration%20ribbon&image_size=landscape_4_3',
+            image: hasImage
+                ? image
+                : 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=beautiful%20gift%20basket%20pink%20wine%20decoration%20ribbon&image_size=landscape_4_3',
             items,
             description: desc,
             price: Number(price) || 0,
-            ativo: true
+            ativo: true,
+            storage_mode: (hasImage && /^data:image\//i.test(image)) ? 'firestore_base64' : (hasImage ? 'url_external' : 'placeholder')
         };
 
         let docIdToSave = adminEditingId ? String(adminEditingId) : null;
-        console.log('[SALVAR CESTA] Passo 3: Salvando no Firestore...', { docIdToSave, nome: obj.name, preco: obj.price });
+        console.log('[SALVAR CESTA] Passo 3: Salvando no Firestore...', { docIdToSave, nome: obj.name, preco: obj.price, storage_mode: obj.storage_mode, imagem_tamanho: obj.image.length });
 
         try {
             if (progressText) {
@@ -1918,7 +2000,7 @@ async function saveEntityProductAsyncOverride() {
             }
             console.log('[FIREBASE FIRESTORE] Cesta salva com sucesso! doc.id:', obj.id, 'savedResult:', saved);
             if (progressFill) progressFill.style.width = '100%';
-            showFirebaseSuccess(`Cesta "${obj.name}" salva na nuvem e visível para todos os clientes agora! <a href="${LINK_CONSOLE_FIREBASE}" target="_blank" style="font-weight:500;text-decoration:underline;color:#1B5E20;">Ver no Console</a>`);
+            showFirebaseSuccess(`Cesta "${obj.name}" salva NO FIRESTORE e atualizada em tempo real para TODOS os clientes! (modo foto: ${obj.storage_mode}). <a href="${LINK_CONSOLE_FIREBASE}" target="_blank" style="font-weight:500;text-decoration:underline;color:#1B5E20;">Ver no Console</a>`);
         } catch (firestoreErr) {
             console.error('[FIREBASE FIRESTORE] Erro ao salvar a cesta:', firestoreErr);
             showFirebaseError('Salvar Cesta (Firestore)', firestoreErr,
@@ -1929,7 +2011,7 @@ async function saveEntityProductAsyncOverride() {
                 'CAUSA MAIS COMUM: Regras do Firestore NÃO publicadas!\n\n' +
                 '👉 FAÇA ISSO AGORA (1 minuto):\n' +
                 '1. Abra: ' + CONSOLE_FIRESTORE_RULES + '\n' +
-                '2. Cole as regras (rules_version = \"2\" ... allow read: if true ...)\n' +
+                '2. Cole as regras (rules_version = "2" ... allow read, create, update, delete: if true)\n' +
                 '3. CLIQUE NO BOTÃO AZUL/VERDE "PUBLICAR" (obrigatório)\n' +
                 '4. Volte aqui e clique em 💾 Salvar de novo!\n\n' +
                 '(Se aparecer "Create database", clique primeiro: crie o Firestore em Native Mode, localização southamerica-east1 ou us-central1)'
@@ -1938,12 +2020,11 @@ async function saveEntityProductAsyncOverride() {
             return;
         }
 
-        /* ====== PASSO 4: Sincronizar UI ====== */
         if (statusEl) {
             if (progressFill) progressFill.style.width = '100%';
             if (progressText) {
                 progressText.className = 'upload-status-text success';
-                progressText.textContent = '🎉 Tudo salvo na nuvem! Atualizando a lista...';
+                progressText.textContent = '🎉 Tudo salvo no Firestore! Atualizando a lista...';
             }
         }
 

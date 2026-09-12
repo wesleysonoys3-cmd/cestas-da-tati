@@ -321,44 +321,40 @@
                     <!-- Banner fixo de SUCESSO / ERRO do Firebase (apenas para Admin) -->
                     <div id="fbStatusBanner" class="fb-status fb-status-success" style="display:none;margin:0 0 14px;"></div>
 
-                    <!-- Banner PERMANENTE de ajuda: ativar Storage/Firestore e publicar Regras -->
+                    <!-- Banner PERMANENTE de ajuda: APENAS FIRESTORE é obrigatório (Storage removido do fluxo) -->
                     <div id="fbSetupHelper" class="fb-status fb-status-info" style="margin:0 0 14px;padding:14px 16px;line-height:1.65;">
-                        <span style="display:block;font-weight:700;margin-bottom:8px;font-size:15px;color:#1E3A8A;">⚙️ CONFIGURAÇÃO OBRIGATÓRIA DO FIREBASE — Passo a Passo (levará 2-3 min)</span>
+                        <span style="display:block;font-weight:700;margin-bottom:8px;font-size:15px;color:#1E3A8A;">✅ Sincronia em Tempo Real 100% Funcional — apenas FIRESTORE é necessário hoje!</span>
 
-                        <div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:#FFF7ED;border:1px solid #FDBA74;color:#92400E;">
-                            <b>🚨 Problema que vimos na tela:</b> o Storage está pedindo <b>"Fazer upgrade do projeto"</b>. <b>NÃO TENHA MEDO</b> — este é o Plano Blaze (Pay-as-you-go) do Firebase = <b>mesmos recursos GRATUITOS do Plano Spark</b>, só pede cartão como <b>backup de limite</b> (não cobra nada se você não ultrapassar).
-                            Para o seu negócio (cestas com fotos até 5MB), o limite grátis é: <b>5GB de armazenamento GRÁTIS</b> + <b>1GB download/dia GRÁTIS</b> — suficiente para centenas de cestas! Custa R$0.
+                        <div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:#ECFDF5;border:1px solid #86EFAC;color:#065F46;">
+                            <b>Como funciona agora:</b> Todas as cestas (incluindo as FOTOS comprimidas em Base64 dentro do próprio documento) são salvas
+                            <b>apenas no Firestore Database</b> (que já está 100% ativado no seu projeto!).
+                            Nenhum upload externo, nenhum botão amarelo "Fazer upgrade", nenhuma regra de Storage para publicar 🎉.
                         </div>
 
                         <ol style="margin:8px 0 0 20px;padding:0;list-style:decimal;">
                             <li style="margin-bottom:8px;">
-                                <b>Ativar o Storage (clicar no botão AMARELO):</b>
-                                <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/storage" target="_blank"
-                                   style="font-weight:700;text-decoration:underline;color:#6B1E3A;">👉 Abrir Storage → Fazer upgrade do projeto</a>
+                                <b>Atualização em tempo real (qualquer dispositivo):</b> Ao criar, editar ou excluir uma cesta aqui no painel admin,
+                                qualquer pessoa abrindo a vitrine em outro celular, PC ou navegador anônimo verá a alteração <b>AUTOMATICAMENTE em < 5 segundos</b>,
+                                graças ao <code>onSnapshot</code> do Firestore (não precisa recarregar a página!).
+                            </li>
+                            <li style="margin-bottom:8px;">
+                                <b>Como eu comprimo as fotos?</b> Ao selecionar uma foto no botão "Clique para selecionar foto" abaixo,
+                                ela é automaticamente reduzida para <b>no máximo 1280px</b> (largura ou altura) e salva em <b>JPEG 82% de qualidade</b>,
+                                resultando em arquivos de ~80 KB a 250 KB por foto. Pequenas, rápidas e compatíveis com TODOS os navegadores.
+                            </li>
+                            <li style="margin-bottom:8px;">
+                                <b>(Opcional) Quer ver as regras do Firestore?</b>
+                                <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/rules" target="_blank"
+                                   style="font-weight:700;text-decoration:underline;color:#6B1E3A;">👉 Abrir Firestore → Regras</a>
                                 <small style="opacity:.9;display:block;margin-top:2px;">
-                                    · Escolha <b>Plano Blaze (Pay-as-you-go)</b> → Clique em "Continuar" → Informe CPF + cartão de crédito (cobre R$0 como teste, depois devolve).
-                                    · Pergunta frequente: "Vou pagar algo?" — <b>NÃO</b>. O Firebase Blaze só cobra quando você ultrapassa os limites do Plano Spark (5GB Storage, 1GB/dia). Para cestas pequenas, sempre fica no Gratuito.
+                                    As regras atuais (allow read/create/update/delete: if true) permitem tudo para sua loja. Se no futuro quiser bloquear e exigir login, podemos trocar.
                                 </small>
                             </li>
-                            <li style="margin-bottom:8px;">
-                                <b>Depois do upgrade, ative o Storage de verdade:</b> No mesmo link acima, agora vai aparecer <b>"Get started / Começar"</b> em vez do botão amarelo. Clique nele:
-                                · <b>Modo:</b> Modo de produção (seguro) ✔️<br>
-                                · <b>Localização:</b> <code>southamerica-east1 (São Paulo)</code> (se não tiver, pode deixar us-central1 que também funciona)<br>
-                                · Clique em <b>Concluído</b>.
-                            </li>
-                            <li style="margin-bottom:8px;">
-                                <b>Publique as Regras do Storage (sem isso, upload bloqueia):</b>
-                                <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/storage/tatie-atelie-cestas.firebasestorage.app/rules" target="_blank"
-                                   style="font-weight:700;text-decoration:underline;color:#6B1E3A;">👉 Storage → Regras → Publicar</a>
-                                <small style="opacity:.9;display:block;margin-top:2px;">Cole o texto das regras que enviamos (allow read + write imagem <5MB) e <b>CLIQUEM EM PUBLICAR</b> (só salvar não basta).</small>
-                            </li>
                             <li>
-                                <b>(Confira o Firestore — já deve estar OK):</b>
-                                <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/data" target="_blank"
-                                   style="font-weight:600;text-decoration:underline;color:#6B1E3A;">👉 Abrir Firestore → Dados</a>
+                                <b>Botão "☁️ Importar Cestas Locais → Nuvem":</b>
                                 <small style="opacity:.9;display:block;margin-top:2px;">
-                                    Se abrir com a lista de cestas (id 1 etc), está tudo OK. Se abrir "Criar Database", crie em Modo Nativo, localidade São Paulo, depois publique as Regras:
-                                    <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/rules" target="_blank" style="font-weight:700;text-decoration:underline;">👉 Firestore → Regras → Publicar</a>.
+                                    Se você já tiver cestas antigas cadastradas SOMENTE no seu navegador (do tempo anterior sem Firebase),
+                                    clique nesse botão para importá-las todas para o Firestore agora em 1 clique — elas passarão a aparecer em todos os dispositivos.
                                 </small>
                             </li>
                         </ol>

@@ -111,49 +111,24 @@
                 }),
                 timeoutPing
             ]);
-            console.log('[Firebase PING] Storage OK · bucket: ' + FIREBASE_CONFIG.storageBucket + ' · pasta "' + FIREBASE_STORAGE_FOLDER + '" acessível.');
+            console.log('[Firebase PING] Storage OK · bucket: ' + FIREBASE_CONFIG.storageBucket + ' · pasta "' + FIREBASE_STORAGE_FOLDER + '" acessível. (Storage opcional; hoje usamos apenas imagens Base64 embutidas no Firestore).');
         } catch (storageErr) {
-            result.ok = false;
+            // === STORAGE NÃO É MAIS OBRIGATÓRIO! ===
+            // Qualquer erro aqui virou apenas aviso (não bloqueia mais). Imagens são salvas como
+            // Base64 DENTRO do documento do Firestore → NÃO PRECISA de Storage ativado,
+            // NÃO PRECISA fazer upgrade do plano, NÃO PRECISA publicar regras de Storage.
             const msg = (storageErr && storageErr.message) || String(storageErr);
-            if (storageErr && storageErr.code) {
-                // Códigos oficiais Firebase Storage
-                switch (storageErr.code) {
-                    case 'storage/bucket-not-found':
-                    case 'storage/unknown':
-                        if (/bucket.*not.*found|does.*not.*have.*storage|project.*not.*enabled|invalid.*bucket/i.test(msg)) {
-                            result.code = 'bucket_not_found';
-                            result.message = 'O BUCKET DE STORAGE NÃO EXISTE. O Console do Firebase mostrou o botão AMARELO "Fazer upgrade do projeto" — você precisa clicar nele e ativar o Plano Blaze (Pay-as-you-go) para criar o bucket ' + FIREBASE_CONFIG.storageBucket + '. O plano Blaze MANTÉM os limites GRATUITOS do Plano Spark (5GB Storage grátis + 1GB download/dia GRÁTIS = R$0 para cestas pequenas). Só pede cartão como limite de segurança.';
-                        } else {
-                            result.code = 'storage_error';
-                            result.message = 'Erro no Storage: ' + storageErr.code + ' — ' + msg;
-                        }
-                        break;
-                    case 'storage/unauthorized':
-                    case 'storage/permission-denied':
-                    case 'permission-denied':
-                        result.code = 'permission_denied';
-                        result.message = 'REGRAS DO STORAGE NÃO PUBLICADAS (Permission Denied). O Firebase bloqueou a leitura/escrita na pasta "' + FIREBASE_STORAGE_FOLDER + '". Abra Storage → Regras e clique em Publicar.';
-                        break;
-                    case 'storage/retry-limit-exceeded':
-                    case 'storage/canceled':
-                        result.code = 'timeout';
-                        result.message = 'Timeout ao contatar Storage (6s). Sua internet está ruim? Ou as regras estão bloqueando sem retornar erro.';
-                        break;
-                    default:
-                        result.code = 'storage_error';
-                        result.message = 'Erro no Storage (' + storageErr.code + '): ' + msg;
-                }
-            } else if (msg === 'timeout_ping_storage_6s') {
-                result.code = 'timeout';
-                result.message = 'Timeout ao contatar Storage (6s). O Firebase não respondeu — provavelmente as Regras do Storage estão bloqueando ou sua internet está ruim.';
+            result.code = 'storage_warn';
+            if (storageErr && storageErr.code === 'storage/bucket-not-found' || /bucket.*not.*found|does.*not.*have.*storage|project.*not.*enabled|invalid.*bucket/i.test(msg)) {
+                result.message = 'Storage não ativado (botão amarelo "Fazer upgrade do projeto") — MAS ISSO É OK! Não usamos mais o Storage para salvar fotos. Todas as imagens são embutidas em Base64 dentro do documento da cesta no Firestore (que já está 100% ativado). Nenhum upgrade necessário. 🎉';
+            } else if (msg === 'timeout_ping_storage_6s' || (storageErr && (storageErr.code === 'storage/retry-limit-exceeded' || storageErr.code === 'storage/canceled'))) {
+                result.message = 'Storage lento/timeout — OK, não usamos mais Storage obrigatório. Fotos ficam embutidas no próprio documento do Firestore via Base64.';
             } else {
-                // Fallback não categorizado
-                result.code = 'storage_error';
-                result.message = 'Erro no Storage: ' + msg;
+                result.message = 'Aviso: Storage retornou erro (' + (storageErr && storageErr.code ? storageErr.code : 'desconhecido') + ') — NÃO PRECISA FAZER NADA! Usamos apenas Firestore para tudo (incluindo fotos embutidas em Base64).';
             }
             result.rawError = storageErr;
-            console.error('[Firebase PING] Storage FALHOU:', result.code, storageErr);
-            // Mesmo se Storage falhar, ainda queremos testar Firestore → não retorna ainda
+            console.warn('[Firebase PING] Storage NÃO CONFIGURADO (OK hoje, não usamos Storage obrigatório):', storageErr && storageErr.code, storageErr && storageErr.message);
+            // ⚠️ CRÍTICO: NÃO MARCAMOS result.ok = false! Só Firestore é obrigatório, ele é validado abaixo.
         }
 
         /* --- 2) PING FIRESTORE: tenta getDocs vazio com limit(1) --- */
