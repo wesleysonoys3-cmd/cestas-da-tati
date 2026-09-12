@@ -312,11 +312,21 @@
         }
         const col = firestoreLib.collection(db, FIREBASE_COLLECTION);
         const q = firestoreLib.query(col, firestoreLib.orderBy('criado_em', 'desc'));
+        let jaRecebeuDoServidor = false;
         const unsubscribe = firestoreLib.onSnapshot(q,
+            { includeMetadataChanges: true },
             (snap) => {
+                const doCache = !!snap.metadata.fromCache;
+                const temPendingWrites = !!snap.metadata.hasPendingWrites;
+                if (doCache && !temPendingWrites) {
+                    console.warn('[Firebase] onSnapshot(cestas) → DADOS VINDOS DO CACHE LOCAL (aguardando servidor...). Quantidade:', snap.size);
+                } else if (!doCache) {
+                    jaRecebeuDoServidor = true;
+                    console.log('[Firebase] onSnapshot(cestas) → DADOS DIRETOS DO SERVIDOR ✅. Quantidade:', snap.size);
+                }
                 const list = [];
                 snap.forEach((doc) => list.push(mapDocToProduct(doc)));
-                if (typeof onUpdate === 'function') onUpdate(list);
+                if (typeof onUpdate === 'function') onUpdate(list, { doCache, doServidor: !doCache, primeiraVezServidor: jaRecebeuDoServidor && !doCache });
             },
             (err) => {
                 console.error('[Firebase] onSnapshot(cestas) falhou:', err);
@@ -385,9 +395,16 @@
             }
             const ref = firestoreLib.doc(db, COL_STORE_CONFIG, DOC_STORE_STATUS);
             const unsub = firestoreLib.onSnapshot(ref,
+                { includeMetadataChanges: true },
                 (doc) => {
+                    const doCache = !!doc.metadata.fromCache;
+                    if (doCache) {
+                        console.warn('[Firebase] onSnapshot(store_status) → STATUS VINDO DO CACHE LOCAL (aguardando servidor)...');
+                    } else {
+                        console.log('[Firebase] onSnapshot(store_status) → STATUS DIRETO DO SERVIDOR ✅');
+                    }
                     const status = mapStoreStatusDoc(doc) || { open: true, reabre_em: '', mensagem_fechado: '' };
-                    if (typeof onUpdate === 'function') onUpdate(status);
+                    if (typeof onUpdate === 'function') onUpdate(status, { doCache, doServidor: !doCache });
                 },
                 (err) => {
                     console.warn('[Firebase] onSnapshot(store_config/status) falhou (assumimos loja aberta):', err);

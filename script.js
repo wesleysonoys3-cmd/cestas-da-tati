@@ -150,6 +150,10 @@ function init() {
 }
 
 function loadFromStorage() {
+    /* LIMPEZA PREVENTIVA DE CACHE ANTIGO: remove qualquer sobra de cestas em localStorage
+       para garantir que o usuário VEJA APENAS as cestas vindas do Firestore. */
+    nukeLocalProductsCache();
+
     /* ---------- PRODUTOS (CESTAS): SÃO 100% NUVEM ---------- */
     /* NÃO LEMOS MAIS DE localStorage['cestasTati_products'].
        A variável `products` é populada pelo onSnapshot() do Firestore em bootstrapFirebase.
@@ -214,6 +218,35 @@ function nukeLocalProductsCache() {
             localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
             console.log('[Limpeza] Removida entrada antiga de produtos em localStorage. Cestas agora são 100% Firestore/Storage.');
         }
+        /* Também limpamos qualquer chave antiga ou com nome errado que possa estar causando confusão */
+        const chavesSuspeitas = Object.keys(localStorage).filter(k =>
+            /cestas|products|cesta_/i.test(k) && k !== STORAGE_KEYS.CART && k !== STORAGE_KEYS.ADDONS
+        );
+        chavesSuspeitas.forEach(k => {
+            if (k !== STORAGE_KEYS.DELIVERY && k !== STORAGE_KEYS.COUPONS &&
+                k !== STORAGE_KEYS.ADMIN_LOGGED && k !== STORAGE_KEYS.WHATSAPP &&
+                k !== STORAGE_KEYS.STORE_CONTACT && !/deliveryDefaultsVersion|DEFAULT_DELIVERY/i.test(k)) {
+                console.log('[Limpeza] Removida chave suspeita de cache antigo:', k);
+                localStorage.removeItem(k);
+            }
+        });
+    } catch(_) {}
+}
+
+/* ---------- Indicador visual: Sincronizando com o servidor ---------- */
+function showCacheIndicator(msg) {
+    try {
+        const el = document.getElementById('cacheSyncIndicator');
+        if (!el) return;
+        const txt = el.querySelector('.cache-sync-text');
+        if (txt && msg) txt.textContent = msg;
+        el.style.display = 'flex';
+    } catch(_) {}
+}
+function hideCacheIndicator() {
+    try {
+        const el = document.getElementById('cacheSyncIndicator');
+        if (el) el.style.display = 'none';
     } catch(_) {}
 }
 
@@ -1446,9 +1479,15 @@ async function saveStoreStatusFromAdmin() {
     }
 }
 
-function applyStoreStatusGlobal(status) {
+function applyStoreStatusGlobal(status, meta) {
     const prev = storeOpenGlobal || { open: true };
     storeOpenGlobal = Object.assign({ open: true, reabre_em: '', mensagem_fechado: '' }, status || {});
+    const doCache = !!(meta && meta.doCache);
+    if (doCache) {
+        console.warn('[STATUS LOJA] Recebido DO CACHE LOCAL (aguardando confirmação do servidor)... status =', storeOpenGlobal.open ? 'ABERTA' : 'FECHADA');
+    } else if (meta && meta.doServidor !== undefined) {
+        console.log('[STATUS LOJA] Confirmado DIRETO DO SERVIDOR ✅ status =', storeOpenGlobal.open ? 'ABERTA' : 'FECHADA');
+    }
     renderStoreClosedBannerAndBadge();
     try { renderAdminStoreStatusTab(); } catch(_) {}
     if (prev.open !== storeOpenGlobal.open) {
@@ -2007,11 +2046,19 @@ async function bootstrapFirebase() {
 
             /* ====== onSnapshot EM TEMPO REAL: ATUALIZA A VITRINE E PAINEL ADMIN AUTOMATICAMENTE ====== */
             const snapshotUnsub = window.FirebaseAPI.subscribeProdutos(
-                (listaCestas) => {
+                (listaCestas, meta) => {
                     const onlyActive = Array.isArray(listaCestas)
                         ? listaCestas.filter(p => p.ativo !== false)
                         : [];
-                    console.log('[FIREBASE onSnapshot - CESTAS] Recebemos', onlyActive.length, 'cestas ativas do Firestore. Atualizando vitrine e admin...');
+                    const doCache = !!(meta && meta.doCache);
+                    const doServidor = !!(meta && meta.doServidor);
+                    if (doCache) {
+                        console.warn('[FIREBASE onSnapshot - CESTAS] Recebemos', onlyActive.length, 'cestas (DO CACHE LOCAL). Mostrando provisoriamente, aguardando servidor...');
+                        showCacheIndicator('Atualizando cestas do servidor…');
+                    } else if (doServidor) {
+                            console.log('[FIREBASE onSnapshot - CESTAS] Recebemos', onlyActive.length, 'cestas DIRETAS DO SERVIDOR ✅. Atualizando vitrine e admin...');
+                            setTimeout(() => hideCacheIndicator(), 400);
+                        }
                     products = onlyActive.length > 0 ? onlyActive : [];
                     try { renderProducts(); } catch(_) {}
                     try { renderAdminProducts(); } catch(_) {}
@@ -2020,6 +2067,7 @@ async function bootstrapFirebase() {
                 },
                 (err) => {
                     console.error('[FIREBASE onSnapshot - CESTAS] Erro ao receber atualizações:', err);
+                    hideCacheIndicator();
                     showFirebaseError('Leitura em tempo real (onSnapshot)', err,
                         'Não foi possível ler as cestas do Firestore. <b>Causa provável: Regras do Firestore não publicadas ou bloqueando a leitura.</b>');
                 }

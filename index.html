@@ -5,8 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0">
     <meta name="theme-color" content="#6B1E3A">
     <meta name="description" content="Tatiê Ateliê & Cestas - Presentes feitos para encantar. Cestas personalizadas, cafés da manhã e presentes feitos com amor.">
+
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
     <title>Tatiê | Ateliê & Cestas - Presentes feitos para encantar</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260912_v1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
@@ -18,7 +23,7 @@
         window.__firebaseModules = { initializeApp, getFirestore, getStorage };
         window.dispatchEvent(new Event('firebase:ready'));
     </script>
-    <script src="firebase-init.js" defer></script>
+    <script src="firebase-init.js?v=20260912_v1" defer></script>
 </head>
 <body>
     <!-- Banner quando a LOJA ESTÁ FECHADA (só aparece quando você desativar os pedidos) -->
@@ -31,6 +36,12 @@
             </div>
             <span class="store-closed-emoji">💗</span>
         </div>
+    </div>
+
+    <!-- Indicador discreto: mostra quando esta carregando do cache local (some qdo chega do servidor) -->
+    <div id="cacheSyncIndicator" class="cache-sync-indicator" style="display:none;">
+        <span class="cache-sync-dot"></span>
+        <span class="cache-sync-text">Atualizando dados do servidor…</span>
     </div>
 
     <!-- Faixa SUPERIOR de contato/redes (visível ANTES do header, no topo MÁXIMO da página) -->
@@ -544,6 +555,6 @@
         </div>
     </footer>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=20260912_v1"></script>
 </body>
 </html>
