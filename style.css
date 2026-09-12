@@ -2575,3 +2575,123 @@ button,
         gap: 6px;
     }
 }
+
+/* ========== ADMIN: Botões de ação rápida (cabeçalho Admin) ========== */
+.admin-header-quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    margin: 0 0 12px;
+    background: linear-gradient(135deg, #FFF1F2 0%, #FEF3C7 100%);
+    border: 1px solid #FECDD3;
+    border-radius: 12px;
+}
+.admin-header-quick-actions .btn-tiny {
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+/* ========== ADMIN: Cards de Contato Rápido ========== */
+.contact-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 8px;
+}
+.contact-card {
+    display: block;
+    text-decoration: none;
+    padding: 18px 16px;
+    border-radius: 14px;
+    border: 2px solid transparent;
+    background: #fff;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.07);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    text-align: center;
+    color: #111827;
+}
+.contact-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+.contact-card-icon {
+    font-size: 34px;
+    line-height: 1;
+    margin-bottom: 8px;
+}
+.contact-card-title {
+    font-weight: 800;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+.contact-card-sub {
+    font-size: 13px;
+    color: #374151;
+    margin-bottom: 6px;
+    word-break: break-all;
+}
+.contact-card-hint {
+    font-size: 12px;
+    color: #6B7280;
+    margin-top: 2px;
+}
+
+.contact-card-wa {
+    background: linear-gradient(135deg, #DCFCE7 0%, #D1FAE5 100%);
+    border-color: #86EFAC;
+}
+.contact-card-wa:hover {
+    border-color: #22C55E;
+}
+.contact-card-wa-alt {
+    background: linear-gradient(135deg, #ECFDF5 0%, #F0FDFA 100%);
+    border-color: #6EE7B7;
+}
+.contact-card-ig {
+    background: linear-gradient(135deg, #FCE7F3 0%, #FBCFE8 100%);
+    border-color: #F9A8D4;
+}
+.contact-card-ig:hover { border-color: #E1306C; }
+.contact-card-fb {
+    background: linear-gradient(135deg, #DBEAFE 0%, #EFF6FF 100%);
+    border-color: #93C5FD;
+}
+.contact-card-fb:hover { border-color: #1877F2; }
+
+.contact-card-wa .contact-card-title { color: #166534; }
+.contact-card-wa-alt .contact-card-title { color: #065F46; }
+.contact-card-ig .contact-card-title { color: #9D174D; }
+.contact-card-fb .contact-card-title { color: #1E3A8A; }
+
+@media (max-width: 560px) {
+    .admin-header-quick-actions {
+        gap: 8px;
+        padding: 10px;
+        justify-content: center;
+    }
+    .contact-quick-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    .contact-card {
+        padding: 14px 10px;
+    }
+    .contact-card-icon {
+        font-size: 28px;
+    }
+    .contact-card-title {
+        font-size: 14px;
+    }
+    .contact-card-sub {
+        font-size: 12px;
+    }
+}
+@media (max-width: 420px) {
+    .contact-quick-grid {
+        grid-template-columns: 1fr;
+    }
+}

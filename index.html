@@ -308,11 +308,15 @@
             </div>
 
             <div id="adminContent" style="display:none;">
+                <div id="adminHeaderQuickActions" class="admin-header-quick-actions"></div>
+
                 <div class="admin-tabs">
                     <button class="admin-tab active" data-tab="products">Cestas</button>
                     <button class="admin-tab" data-tab="addons">Adicionais</button>
                     <button class="admin-tab" data-tab="delivery">Taxas</button>
                     <button class="admin-tab" data-tab="coupons">Cupons</button>
+                    <button class="admin-tab" data-tab="contact">📞 Contato</button>
+                    <button class="admin-tab" data-tab="contactConfig">⚙️ Contato</button>
                 </div>
 
                 <div id="tab-products" class="admin-tab-content active">
@@ -500,6 +504,9 @@
                         </div>
                     </div>
                 </div>
+
+                <div id="tab-contact" class="admin-tab-content"></div>
+                <div id="tab-contactConfig" class="admin-tab-content"></div>
             </div>
         </div>
     </div>
@@ -508,7 +515,7 @@
         <div class="container">
             <p class="footer-brand">💗 Tatiê · Ateliê &amp; Cestas</p>
             <p class="footer-slogan">Presentes feitos para encantar.</p>
-            <p class="footer-contact">WhatsApp: <a href="https://wa.me/5561995869522" target="_blank">(61) 99586-9522</a></p>
+            <p id="footerContactHost" class="footer-contact"></p>
         </div>
     </footer>
 

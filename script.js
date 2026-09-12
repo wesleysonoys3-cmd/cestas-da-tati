@@ -5,12 +5,16 @@ const STORAGE_KEYS = {
     COUPONS: 'cestasTati_coupons',
     CART: 'cestasTati_cart',
     ADMIN_LOGGED: 'cestasTati_adminLogged',
-    WHATSAPP: 'cestasTati_whatsapp'
+    WHATSAPP: 'cestasTati_whatsapp',
+    STORE_CONTACT: 'cestasTati_storeContact'
 };
 
 const ADMIN_USERNAME = 'tati2026';
 const ADMIN_PASSWORD = 'tatiane2026';
 const DEFAULT_WHATSAPP = '5561995869522';
+const DEFAULT_INSTAGRAM = 'https://www.instagram.com/tatie.atelie.cestas/';
+const DEFAULT_FACEBOOK  = 'https://www.facebook.com/tatieatelieecestas';
+const DEFAULT_WHATSAPP_MESSAGE = 'Olá! Vim pelo site da Tatiê Ateliê & Cestas e gostaria de mais informações sobre seus produtos 💗';
 const PIX_KEY = '02714998186';
 const STORE_NAME = 'Tatiê Ateliê & Cestas';
 const STORE_SLOGAN = 'Presentes feitos para encantar.';
@@ -121,6 +125,12 @@ let deliveryRates = [];
 let coupons = [];
 let cart = [];
 let whatsappNumber = DEFAULT_WHATSAPP;
+let storeContact = {
+    whatsapp: DEFAULT_WHATSAPP,
+    whatsappMessage: DEFAULT_WHATSAPP_MESSAGE,
+    instagram: DEFAULT_INSTAGRAM,
+    facebook: DEFAULT_FACEBOOK
+};
 let selectedProduct = null;
 let modalQty = 1;
 let modalSelectedAddons = [];
@@ -168,9 +178,32 @@ function loadFromStorage() {
     cart = storedCart ? JSON.parse(storedCart) : [];
     whatsappNumber = storedWhatsApp || DEFAULT_WHATSAPP;
 
+    /* ---------- CONTATO (WhatsApp/Insta/Face) ---------- */
+    const storedStoreContact = localStorage.getItem(STORAGE_KEYS.STORE_CONTACT);
+    if (storedStoreContact) {
+        try {
+            const parsed = JSON.parse(storedStoreContact);
+            storeContact = Object.assign({
+                whatsapp: DEFAULT_WHATSAPP,
+                whatsappMessage: DEFAULT_WHATSAPP_MESSAGE,
+                instagram: DEFAULT_INSTAGRAM,
+                facebook: DEFAULT_FACEBOOK
+            }, parsed || {});
+        } catch (_) {
+            storeContact = {
+                whatsapp: DEFAULT_WHATSAPP,
+                whatsappMessage: DEFAULT_WHATSAPP_MESSAGE,
+                instagram: DEFAULT_INSTAGRAM,
+                facebook: DEFAULT_FACEBOOK
+            };
+        }
+    }
+    whatsappNumber = storeContact && storeContact.whatsapp ? storeContact.whatsapp : (storedWhatsApp || DEFAULT_WHATSAPP);
+
     if (!storedAddons)   saveToStorage(STORAGE_KEYS.ADDONS,    addons);
     if (!storedCoupons)  saveToStorage(STORAGE_KEYS.COUPONS,   coupons);
     if (!storedWhatsApp) localStorage.setItem(STORAGE_KEYS.WHATSAPP, whatsappNumber);
+    if (!storedStoreContact) saveToStorage(STORAGE_KEYS.STORE_CONTACT, storeContact);
 }
 
 /* Remove entrada de produtos do localStorage se existir (limpeza pós-migração) */
@@ -969,7 +1002,37 @@ function adminLogin() {
 function showAdminContent() {
     document.getElementById('adminLogin').style.display = 'none';
     document.getElementById('adminContent').style.display = 'block';
+    renderAdminHeaderActionButtons();
     switchAdminTab('products');
+}
+
+function renderAdminHeaderActionButtons() {
+    const wrap = document.getElementById('adminHeaderQuickActions');
+    if (!wrap) return;
+    const wa = storeContact.whatsapp || DEFAULT_WHATSAPP;
+    const waLink = 'https://wa.me/' + wa.replace(/\D/g, '') + '?text=' + encodeURIComponent(storeContact.whatsappMessage || DEFAULT_WHATSAPP_MESSAGE);
+    const ig = storeContact.instagram || DEFAULT_INSTAGRAM;
+    const fb = storeContact.facebook  || DEFAULT_FACEBOOK;
+    wrap.innerHTML =
+        '<a href="' + waLink + '" target="_blank" class="btn-tiny" style="background:#25D366;color:#fff;text-decoration:none;border-color:#1FAD56;" title="Abrir WhatsApp comercial">' +
+        '💬 WhatsApp</a> ' +
+        (ig ? '<a href="' + ig + '" target="_blank" class="btn-tiny" style="background:#E1306C;color:#fff;text-decoration:none;border-color:#B82759;" title="Abrir Instagram">' +
+        '📷 Instagram</a> ' : '') +
+        (fb ? '<a href="' + fb + '" target="_blank" class="btn-tiny" style="background:#1877F2;color:#fff;text-decoration:none;border-color:#0F5DBC;" title="Abrir Facebook">' +
+        '📘 Facebook</a> ' : '') +
+        '<button id="adminLogoutBtnTop" class="btn-tiny" style="background:#FEE2E2;color:#991B1B;border-color:#FCA5A5;margin-left:6px;" title="Sair do painel admin">🚪 Sair</button>';
+    const lg = document.getElementById('adminLogoutBtnTop');
+    if (lg) lg.addEventListener('click', logoutAdmin);
+}
+
+function logoutAdmin() {
+    localStorage.removeItem(STORAGE_KEYS.ADMIN_LOGGED);
+    document.getElementById('adminContent').style.display = 'none';
+    document.getElementById('adminLogin').style.display = 'block';
+    document.getElementById('adminUsername').value = '';
+    document.getElementById('adminPassword').value = '';
+    closeModal('adminModal');
+    alert('✅ Você saiu do painel administrativo.');
 }
 
 function switchAdminTab(tabName) {
@@ -984,6 +1047,8 @@ function switchAdminTab(tabName) {
     else if (tabName === 'addons') renderAdminAddons();
     else if (tabName === 'delivery') renderAdminDelivery();
     else if (tabName === 'coupons') renderAdminCoupons();
+    else if (tabName === 'contact') renderAdminContactTab();
+    else if (tabName === 'contactConfig') renderAdminContactConfigTab();
 }
 
 function renderAdminProducts() {
@@ -1074,6 +1139,200 @@ function renderAdminCoupons() {
         div.querySelector('.delete').addEventListener('click', () => deleteEntity('coupon', c.id));
         list.appendChild(div);
     });
+}
+
+function renderAdminContactTab() {
+    const host = document.getElementById('tab-contact');
+    if (!host) return;
+    const wa = (storeContact.whatsapp || DEFAULT_WHATSAPP).replace(/\D/g, '');
+    const waFmt = formatWhatsAppDisplay(wa);
+    const waLink = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(storeContact.whatsappMessage || DEFAULT_WHATSAPP_MESSAGE);
+    const ig = storeContact.instagram || DEFAULT_INSTAGRAM;
+    const fb = storeContact.facebook  || DEFAULT_FACEBOOK;
+    const waClienteLink = 'https://wa.me/' + wa + '?text=' + encodeURIComponent('Olá! Vim pelo site e queria fazer um pedido 💗');
+    host.innerHTML = `
+        <h4 class="admin-section-title">📞 Contato Rápido da Loja</h4>
+        <p style="color:#4B5563;margin:0 0 16px;">Clique abaixo para abrir diretamente as suas redes sociais e WhatsApp. Perfeito para compartilhar ou atender os clientes rapidamente!</p>
+
+        <div class="contact-quick-grid">
+            <a href="${waLink}" target="_blank" class="contact-card contact-card-wa">
+                <div class="contact-card-icon">💬</div>
+                <div class="contact-card-title">WhatsApp Comercial</div>
+                <div class="contact-card-sub">${waFmt}</div>
+                <div class="contact-card-hint">Atendimento / Pedidos</div>
+            </a>
+
+            <a href="${waClienteLink}" target="_blank" class="contact-card contact-card-wa-alt">
+                <div class="contact-card-icon">🛍️</div>
+                <div class="contact-card-title">Enviar Mensagem Padrão</div>
+                <div class="contact-card-sub">Pronta para cliente</div>
+                <div class="contact-card-hint">Abre direto no chat</div>
+            </a>
+
+            ${ig ? `
+            <a href="${ig}" target="_blank" class="contact-card contact-card-ig">
+                <div class="contact-card-icon">📷</div>
+                <div class="contact-card-title">Instagram</div>
+                <div class="contact-card-sub">@${extractHandle(ig,'instagram')}</div>
+                <div class="contact-card-hint">Fotos e novidades</div>
+            </a>` : ''}
+
+            ${fb ? `
+            <a href="${fb}" target="_blank" class="contact-card contact-card-fb">
+                <div class="contact-card-icon">📘</div>
+                <div class="contact-card-title">Facebook</div>
+                <div class="contact-card-sub">${extractHandle(fb,'facebook')}</div>
+                <div class="contact-card-hint">Página da loja</div>
+            </a>` : ''}
+        </div>
+
+        <div style="margin-top:22px;padding:16px;border-radius:12px;background:#FEF3C7;border:1px dashed #D97706;color:#78350F;">
+            💡 <b>Dica:</b> para editar o número do WhatsApp, links do Instagram/Facebook ou mensagem automática, clique na aba <b>⚙️ Config. Contato</b> ao lado!
+        </div>
+    `;
+}
+
+function renderAdminContactConfigTab() {
+    const host = document.getElementById('tab-contactConfig');
+    if (!host) return;
+    host.innerHTML = `
+        <h4 class="admin-section-title">⚙️ Configurar Contatos da Loja</h4>
+        <p style="color:#4B5563;margin:0 0 16px;">Preencha abaixo os dados da sua loja. Eles são usados no Painel Admin e no Rodapé da vitrine pública. Fica salvo automaticamente no navegador.</p>
+
+        <div class="admin-form" style="display:block;padding:0;">
+            <div class="form-group">
+                <label class="form-label">💬 WhatsApp (apenas números, ex: 5561995869522)</label>
+                <input type="text" id="cfgWhatsapp" class="form-input" maxlength="15" value="${escapeAttr(storeContact.whatsapp || '')}" placeholder="5561995869522">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">✍️ Mensagem automática ao abrir WhatsApp</label>
+                <textarea id="cfgWamsg" class="form-input" rows="3" placeholder="Olá! Vim pelo site da Tatiê...">${escapeHtml(storeContact.whatsappMessage || '')}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">📷 Link do Instagram (URL completa)</label>
+                <input type="text" id="cfgInsta" class="form-input" value="${escapeAttr(storeContact.instagram || '')}" placeholder="https://www.instagram.com/tatie.atelie.cestas/">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">📘 Link do Facebook (URL completa)</label>
+                <input type="text" id="cfgFace" class="form-input" value="${escapeAttr(storeContact.facebook || '')}" placeholder="https://www.facebook.com/tatieatelieecestas">
+            </div>
+
+            <div class="admin-form-buttons" style="justify-content:flex-start;">
+                <button id="cfgResetBtn" class="btn-outline">↩️ Restaurar padrões</button>
+                <button id="cfgSaveBtn" class="btn-primary">💾 Salvar configurações</button>
+            </div>
+        </div>
+    `;
+    const btnSave  = host.querySelector('#cfgSaveBtn');
+    const btnReset = host.querySelector('#cfgResetBtn');
+    if (btnSave)  btnSave.addEventListener('click', saveStoreContactConfig);
+    if (btnReset) btnReset.addEventListener('click', resetStoreContactConfig);
+}
+
+function saveStoreContactConfig() {
+    const wa   = (document.getElementById('cfgWhatsapp').value || '').replace(/\D/g, '').trim();
+    const msg  = (document.getElementById('cfgWamsg').value || '').trim();
+    const inst = (document.getElementById('cfgInsta').value || '').trim();
+    const fb   = (document.getElementById('cfgFace').value || '').trim();
+
+    if (!wa || wa.length < 12) {
+        alert('⚠️ WhatsApp inválido. Use formato com DDI + DDD + número (ex: 5561995869522).');
+        return;
+    }
+    if (inst && !/^https?:\/\//i.test(inst)) {
+        alert('⚠️ Link do Instagram precisa começar com https://');
+        return;
+    }
+    if (fb && !/^https?:\/\//i.test(fb)) {
+        alert('⚠️ Link do Facebook precisa começar com https://');
+        return;
+    }
+
+    storeContact = {
+        whatsapp: wa,
+        whatsappMessage: msg || DEFAULT_WHATSAPP_MESSAGE,
+        instagram: inst,
+        facebook: fb
+    };
+    whatsappNumber = wa;
+    saveToStorage(STORAGE_KEYS.STORE_CONTACT, storeContact);
+    localStorage.setItem(STORAGE_KEYS.WHATSAPP, wa);
+
+    renderAdminHeaderActionButtons();
+    renderFooter();
+
+    alert('✅ Configurações de contato salvas com sucesso!\n\nWhatsApp: ' + formatWhatsAppDisplay(wa) +
+          (inst ? '\nInstagram: ' + inst : '') +
+          (fb ? '\nFacebook: ' + fb : '') +
+          '\n\nOs botões do Painel Admin e o rodapé da loja já foram atualizados.');
+}
+
+function resetStoreContactConfig() {
+    if (!confirm('Restaurar os dados padrões de contato da loja? (irá sobrescrever os campos abaixo)')) return;
+    storeContact = {
+        whatsapp: DEFAULT_WHATSAPP,
+        whatsappMessage: DEFAULT_WHATSAPP_MESSAGE,
+        instagram: DEFAULT_INSTAGRAM,
+        facebook: DEFAULT_FACEBOOK
+    };
+    whatsappNumber = DEFAULT_WHATSAPP;
+    saveToStorage(STORAGE_KEYS.STORE_CONTACT, storeContact);
+    localStorage.setItem(STORAGE_KEYS.WHATSAPP, DEFAULT_WHATSAPP);
+    renderAdminContactConfigTab();
+    renderAdminHeaderActionButtons();
+    renderFooter();
+    alert('✅ Dados de contato restaurados para os padrões da loja.');
+}
+
+function formatWhatsAppDisplay(raw) {
+    const s = String(raw || '').replace(/\D/g,'');
+    if (s.length === 13) return `+${s.slice(0,2)} (${s.slice(2,4)}) ${s.slice(4,9)}-${s.slice(9)}`;
+    if (s.length === 11) return `(${s.slice(0,2)}) ${s.slice(2,7)}-${s.slice(7)}`;
+    if (s.length === 10) return `(${s.slice(0,2)}) ${s.slice(2,6)}-${s.slice(6)}`;
+    return raw || '';
+}
+function extractHandle(url, network) {
+    try {
+        if (!url) return '';
+        const clean = url.replace(/\/+$/,'');
+        const parts = clean.split('/').filter(Boolean);
+        const last = parts.pop() || '';
+        if (last.startsWith('@')) return last;
+        if (network === 'instagram' && /^[A-Za-z0-9._-]+$/.test(last)) return '@' + last;
+        if (network === 'facebook'  && /^[A-Za-z0-9.%-]+$/.test(last)) return last;
+        return last;
+    } catch(_) { return url || ''; }
+}
+function escapeHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escapeAttr(s) {
+    return escapeHtml(s).replace(/"/g,'&quot;');
+}
+
+function renderFooter() {
+    const host = document.getElementById('footerContactHost');
+    if (!host) return;
+    const wa = (storeContact.whatsapp || DEFAULT_WHATSAPP).replace(/\D/g,'');
+    const waFmt = formatWhatsAppDisplay(wa);
+    const waLink = 'https://wa.me/' + wa;
+    const ig = storeContact.instagram || '';
+    const fb = storeContact.facebook  || '';
+    const igHandle = ig ? extractHandle(ig,'instagram') : '';
+    const fbHandle = fb ? extractHandle(fb,'facebook') : '';
+
+    let html = `<div>WhatsApp: <a href="${waLink}" target="_blank" rel="noopener">${waFmt}</a></div>`;
+    if (ig || fb) {
+        html += `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:14px;justify-content:center;">`;
+        if (ig) html += `<a href="${ig}" target="_blank" rel="noopener" style="color:#E1306C;text-decoration:none;font-weight:600;">📷 ${igHandle || 'Instagram'}</a>`;
+        if (fb) html += `<a href="${fb}" target="_blank" rel="noopener" style="color:#1877F2;text-decoration:none;font-weight:600;">📘 ${fbHandle || 'Facebook'}</a>`;
+        html += `</div>`;
+    }
+    host.innerHTML = html;
 }
 
 function openEntityForm(entity, editId = null) {
@@ -2152,6 +2411,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     init(); // inicializa o resto do site como sempre
     setCepHelpWhatsAppLink(); // inicializa link de ajuda do CEP
     bindFirebaseUI();
+    try { renderFooter(); } catch(_) {}
 
     /* bootstrapFirebase() já conecta o onSnapshot(cestas) que atualiza a vitrine AUTOMATICAMENTE
        em tempo real. Não precisamos mais esperar retorno. */
