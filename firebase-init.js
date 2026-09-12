@@ -120,9 +120,9 @@
                 switch (storageErr.code) {
                     case 'storage/bucket-not-found':
                     case 'storage/unknown':
-                        if (/bucket.*not.*found|does.*not.*have.*storage|project.*not.*enabled/i.test(msg)) {
+                        if (/bucket.*not.*found|does.*not.*have.*storage|project.*not.*enabled|invalid.*bucket/i.test(msg)) {
                             result.code = 'bucket_not_found';
-                            result.message = 'O BUCKET DE STORAGE NÃO EXISTE. Você precisa ativar o Storage no Console do Firebase (clicar no botão "Get Started / Começar") para criar o bucket ' + FIREBASE_CONFIG.storageBucket + '.';
+                            result.message = 'O BUCKET DE STORAGE NÃO EXISTE. O Console do Firebase mostrou o botão AMARELO "Fazer upgrade do projeto" — você precisa clicar nele e ativar o Plano Blaze (Pay-as-you-go) para criar o bucket ' + FIREBASE_CONFIG.storageBucket + '. O plano Blaze MANTÉM os limites GRATUITOS do Plano Spark (5GB Storage grátis + 1GB download/dia GRÁTIS = R$0 para cestas pequenas). Só pede cartão como limite de segurança.';
                         } else {
                             result.code = 'storage_error';
                             result.message = 'Erro no Storage: ' + storageErr.code + ' — ' + msg;

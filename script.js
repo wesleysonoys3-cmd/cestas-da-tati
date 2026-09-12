@@ -1425,11 +1425,14 @@ async function bootstrapFirebase() {
                         ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Corrigir Firestore</a>'
                         : '';
                     const extraLinkSt = ping && (ping.code === 'bucket_not_found' || ping.code === 'permission_denied' || ping.code === 'storage_error')
-                        ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Corrigir Storage</a>'
+                        ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Abrir Storage / Upgrade</a>'
+                        : '';
+                    const extraWarnSt = ping && ping.code === 'bucket_not_found'
+                        ? ' <br><small style="opacity:.9;display:block;margin-top:4px;">DICA: no Console apareceu o botão AMARELO "Fazer upgrade do projeto"? Clique nele! Plano Blaze = Spark gratuito com Billing backup — 5GB GRÁTIS de Storage, ZERO custo para cestas pequenas.</small>'
                         : '';
                     showFirebaseError('Configuração (Storage/Firestore)', ping && ping.rawError,
                         '<b>Atenção:</b> ' + (ping && ping.message ? ping.message : 'Não foi possível validar os serviços do Firebase.') +
-                        extraLinkSt + extraLinkFs +
+                        extraLinkSt + extraLinkFs + extraWarnSt +
                         ' · Sem resolver isso, nenhuma cesta será salva na nuvem.');
                 } else {
                     console.log('[bootstrapFirebase] PING OK → ' + (ping.message || 'Serviços prontos.'));
@@ -1793,22 +1796,33 @@ async function saveEntityProductAsyncOverride() {
                 ]);
                 if (!ping || !ping.ok) {
                     console.error('[SALVAR CESTA] Ping detectou problema ANTES do upload:', ping && ping.code, ping && ping.message);
+                    const isBucketMissing = ping && ping.code === 'bucket_not_found';
                     showFirebaseError('Configuração (pré-salvar)', ping && ping.rawError,
                         '<b>Impossível salvar agora:</b> ' + (ping && ping.message ? ping.message : 'Não foi possível validar os serviços.') +
+                        (isBucketMissing
+                            ? ' <br><small style="opacity:.9;display:block;margin-top:4px;"><b>DICA ESPECIAL (vimos a sua tela!):</b> O Console do Firebase tem um botão AMARELO "Fazer upgrade do projeto". Clique nesse botão (Plano Blaze). MANTÉM os 5GB GRÁTIS do Plano Spark — só pede cartão como limite de segurança. Nunca vai cobra para cestas pequenas! Não tenha medo!</small>' : '') +
                         (ping && (ping.code === 'bucket_not_found' || ping.code === 'permission_denied' || ping.code === 'storage_error')
-                            ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Storage</a>' : '') +
+                            ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Storage / Upgrade</a>' : '') +
                         (ping && (ping.code === 'firestore_permission_denied' || ping.code === 'firestore_disabled')
                             ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Firestore</a>' : ''));
                     alert(
                         '❌ ANTES DE SALVAR — VALIDAÇÃO DO FIREBASE REPROVOU:\n\n' +
                         (ping && ping.message ? ping.message : 'Configuração inválida.') + '\n\n' +
+                        (isBucketMissing
+                            ? '🚨 IMPORTANTE (VIMOS SUA TELA DO FIREBASE:\n' +
+                              '→ Tem um botão AMARELO escrito "Fazer upgrade do projeto".\n' +
+                              '→ VOCÊ PRECISA CLICAR NELE, ESCOLHER O "Plano Blaze (Pay-as-you-go)".\n' +
+                              '→ NÃO TENHA MEDO: Plano Blaze = MANTÉM 5GB DE STORAGE GRÁTIS + 1GB DOWNLOAD/DIA GRÁTIS.\n' +
+                              '→ SÓ COBRA ALGO SE VOCÊ ULTRAPASSAR ESSES LIMITES (o que não vai acontecer com cestas pequenas).\n' +
+                              '→ Pede CPF + cartão de crédito para limite (R$0 cobrado como teste, depois estorna).\n\n'
+                            : '') +
                         'Como corrigir:\n' +
                         '1) Abra o banner vermelho no topo (tem links clicáveis diretos)\n' +
                         '2) Ou abra manualmente:\n' +
-                        '   Storage → Regras: ' + CONSOLE_STORAGE_RULES + '\n' +
+                        '   Storage → Upgrade/Regras: ' + CONSOLE_STORAGE_RULES + '\n' +
                         '   Firestore → Regras: ' + CONSOLE_FIRESTORE_RULES + '\n' +
                         '3) Publique as regras com o botão "PUBLICAR"\n' +
-                        '4) Volte aqui e clique em Salvar de novo. Desta vez vai funcionar! 💪'
+                        '4) Volte aqui e clique em Salvar de novo. Vai funcionar de primeira! 💪'
                     );
                     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
                     return;
