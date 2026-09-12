@@ -1720,26 +1720,7 @@ function renderTopSocialBar() {
     const waMsg = encodeURIComponent(storeContact.whatsappMessage || DEFAULT_WHATSAPP_MESSAGE);
     const waLink = 'https://wa.me/' + wa + '?text=' + waMsg;
 
-    /* ========== 1) Barra SUPERIOR (acima do header, faixa completa) ========== */
-    const stripHost = document.getElementById('topStripSocialHost');
-    if (stripHost) {
-        let s = '';
-        s += `<a href="${waLink}" target="_blank" rel="noopener" class="top-chip top-chip-wa" title="Chamar no WhatsApp (${waFmt})">
-            <span class="top-chip-icon">💬</span>
-            <span class="top-chip-label">WhatsApp</span>
-        </a>`;
-        if (ig) s += `<a href="${ig}" target="_blank" rel="noopener" class="top-chip top-chip-ig" title="Abrir Instagram ${igHandle}">
-            <span class="top-chip-icon">📷</span>
-            <span class="top-chip-label">Instagram</span>
-        </a>`;
-        if (fb) s += `<a href="${fb}" target="_blank" rel="noopener" class="top-chip top-chip-fb" title="Abrir Facebook ${fbHandle}">
-            <span class="top-chip-icon">📘</span>
-            <span class="top-chip-label">Facebook</span>
-        </a>`;
-        stripHost.innerHTML = s;
-    }
-
-    /* ========== 2) Barra INLINE NO HEADER (ao lado do status "Aberto hoje") ========== */
+    /* ========== Barra INLINE NO HEADER (ao lado do status "Aberto hoje") ========== */
     const headerHost = document.getElementById('headerSocialHost');
     if (headerHost) {
         let h = '';
