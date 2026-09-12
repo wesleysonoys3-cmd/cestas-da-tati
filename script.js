@@ -1263,11 +1263,12 @@ function saveStoreContactConfig() {
 
     renderAdminHeaderActionButtons();
     renderFooter();
+    try { renderTopSocialBar(); } catch(_) {}
 
     alert('✅ Configurações de contato salvas com sucesso!\n\nWhatsApp: ' + formatWhatsAppDisplay(wa) +
           (inst ? '\nInstagram: ' + inst : '') +
           (fb ? '\nFacebook: ' + fb : '') +
-          '\n\nOs botões do Painel Admin e o rodapé da loja já foram atualizados.');
+          '\n\nOs botões do Painel Admin, o topo da página inicial e o rodapé da loja já foram atualizados.');
 }
 
 function resetStoreContactConfig() {
@@ -1284,6 +1285,7 @@ function resetStoreContactConfig() {
     renderAdminContactConfigTab();
     renderAdminHeaderActionButtons();
     renderFooter();
+    try { renderTopSocialBar(); } catch(_) {}
     alert('✅ Dados de contato restaurados para os padrões da loja.');
 }
 
@@ -1333,6 +1335,46 @@ function renderFooter() {
         html += `</div>`;
     }
     host.innerHTML = html;
+}
+
+function renderTopSocialBar() {
+    const wa = (storeContact.whatsapp || DEFAULT_WHATSAPP).replace(/\D/g,'');
+    const waFmt = formatWhatsAppDisplay(wa);
+    const ig = storeContact.instagram || '';
+    const fb = storeContact.facebook  || '';
+    const igHandle = ig ? extractHandle(ig,'instagram') : '';
+    const fbHandle = fb ? extractHandle(fb,'facebook') : '';
+    const waMsg = encodeURIComponent(storeContact.whatsappMessage || DEFAULT_WHATSAPP_MESSAGE);
+    const waLink = 'https://wa.me/' + wa + '?text=' + waMsg;
+
+    /* ========== 1) Barra SUPERIOR (acima do header, faixa completa) ========== */
+    const stripHost = document.getElementById('topStripSocialHost');
+    if (stripHost) {
+        let s = '';
+        s += `<a href="${waLink}" target="_blank" rel="noopener" class="top-chip top-chip-wa" title="Chamar no WhatsApp (${waFmt})">
+            <span class="top-chip-icon">💬</span>
+            <span class="top-chip-label">WhatsApp</span>
+        </a>`;
+        if (ig) s += `<a href="${ig}" target="_blank" rel="noopener" class="top-chip top-chip-ig" title="Abrir Instagram ${igHandle}">
+            <span class="top-chip-icon">📷</span>
+            <span class="top-chip-label">Instagram</span>
+        </a>`;
+        if (fb) s += `<a href="${fb}" target="_blank" rel="noopener" class="top-chip top-chip-fb" title="Abrir Facebook ${fbHandle}">
+            <span class="top-chip-icon">📘</span>
+            <span class="top-chip-label">Facebook</span>
+        </a>`;
+        stripHost.innerHTML = s;
+    }
+
+    /* ========== 2) Barra INLINE NO HEADER (ao lado do status "Aberto hoje") ========== */
+    const headerHost = document.getElementById('headerSocialHost');
+    if (headerHost) {
+        let h = '';
+        h += `<a href="${waLink}" target="_blank" rel="noopener" class="header-social-icon header-social-icon-wa" title="WhatsApp ${waFmt}">💬</a>`;
+        if (ig) h += `<a href="${ig}" target="_blank" rel="noopener" class="header-social-icon header-social-icon-ig" title="Instagram ${igHandle}">📷</a>`;
+        if (fb) h += `<a href="${fb}" target="_blank" rel="noopener" class="header-social-icon header-social-icon-fb" title="Facebook ${fbHandle}">📘</a>`;
+        headerHost.innerHTML = h;
+    }
 }
 
 function openEntityForm(entity, editId = null) {
@@ -2412,6 +2454,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     setCepHelpWhatsAppLink(); // inicializa link de ajuda do CEP
     bindFirebaseUI();
     try { renderFooter(); } catch(_) {}
+    try { renderTopSocialBar(); } catch(_) {}
 
     /* bootstrapFirebase() já conecta o onSnapshot(cestas) que atualiza a vitrine AUTOMATICAMENTE
        em tempo real. Não precisamos mais esperar retorno. */

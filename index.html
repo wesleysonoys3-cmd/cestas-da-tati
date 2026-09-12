@@ -21,14 +21,25 @@
     <script src="firebase-init.js" defer></script>
 </head>
 <body>
+    <!-- Faixa SUPERIOR de contato/redes (visível ANTES do header, no topo MÁXIMO da página) -->
+    <div class="top-contact-strip">
+        <div class="container top-contact-strip-inner">
+            <span class="top-contact-strip-text">💗 <b>Atendimento rápido</b> — chame agora no WhatsApp ou siga nossas redes!</span>
+            <div id="topStripSocialHost" class="top-contact-strip-social"></div>
+        </div>
+    </div>
+
     <header class="header">
         <div class="container">
             <div class="header-top">
                 <button id="btnAdmin" class="btn-admin-link" title="Painel Admin">⚙️</button>
                 <div class="logo-mini">Tatiê <span class="logo-mini-sub">· Ateliê & Cestas</span></div>
-                <div class="status-badge">
-                    <span class="status-dot"></span>
-                    <span id="statusText">Aberto hoje</span>
+                <div class="header-top-right">
+                    <div id="headerSocialHost" class="header-social-inline"></div>
+                    <div class="status-badge">
+                        <span class="status-dot"></span>
+                        <span id="statusText">Aberto hoje</span>
+                    </div>
                 </div>
             </div>
         </div>
