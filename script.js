@@ -1409,6 +1409,40 @@ async function bootstrapFirebase() {
             updateFirebaseStatus('online',
                 `☁️ Conectado ao Firebase · Projeto: <code>${window.FirebaseAPI.CONFIG.projectId}</code>. <b>Modo 100% nuvem:</b> salvar/excluir uma cesta reflete para TODOS os clientes em tempo real.`);
 
+            /* ====== PING RÁPIDO (6s max) em Storage + Firestore antes de qualquer operação ====== */
+            try {
+                console.log('[bootstrapFirebase] Rodando ping rápido Storage+Firestore para validar regras/bucket...');
+                const ping = window.FirebaseAPI.pingFirebaseServices
+                    ? await Promise.race([
+                          window.FirebaseAPI.pingFirebaseServices(),
+                          new Promise((_, rj) => setTimeout(() => rj(new Error('timeout_ping_total_8s')), 8000))
+                      ])
+                    : { ok: true, code: 'ping_not_available', message: 'Ping não disponível nesta versão do firebase-init.js.' };
+
+                if (!ping || !ping.ok) {
+                    console.warn('[bootstrapFirebase] PING detectou problema:', ping && ping.code, ping && ping.message);
+                    const extraLinkFs = ping && (ping.code === 'firestore_permission_denied' || ping.code === 'firestore_disabled')
+                        ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Corrigir Firestore</a>'
+                        : '';
+                    const extraLinkSt = ping && (ping.code === 'bucket_not_found' || ping.code === 'permission_denied' || ping.code === 'storage_error')
+                        ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#991B1B;font-weight:700;text-decoration:underline;">👉 Corrigir Storage</a>'
+                        : '';
+                    showFirebaseError('Configuração (Storage/Firestore)', ping && ping.rawError,
+                        '<b>Atenção:</b> ' + (ping && ping.message ? ping.message : 'Não foi possível validar os serviços do Firebase.') +
+                        extraLinkSt + extraLinkFs +
+                        ' · Sem resolver isso, nenhuma cesta será salva na nuvem.');
+                } else {
+                    console.log('[bootstrapFirebase] PING OK → ' + (ping.message || 'Serviços prontos.'));
+                    showFirebaseSuccess('Conexão validada: Firebase Storage + Firestore ativos e com regras publicadas. Você já pode cadastrar cestas! 🎉');
+                    setTimeout(() => {
+                        const bn = document.getElementById('fbStatusBanner');
+                        if (bn) bn.style.display = 'none';
+                    }, 6000);
+                }
+            } catch (pingErr) {
+                console.warn('[bootstrapFirebase] Ping falhou (timeout/erro não esperado):', pingErr);
+            }
+
             /* ====== onSnapshot EM TEMPO REAL: ATUALIZA A VITRINE E PAINEL ADMIN AUTOMATICAMENTE ====== */
             const snapshotUnsub = window.FirebaseAPI.subscribeProdutos(
                 (listaCestas) => {
@@ -1748,6 +1782,43 @@ async function saveEntityProductAsyncOverride() {
             throw new Error('Firebase não configurado. Verifique as credenciais no arquivo firebase-init.js e sua conexão com a internet.');
         }
         console.log('[SALVAR CESTA] Passo 1 OK: Firebase inicializado. Projeto:', window.FirebaseAPI.CONFIG.projectId);
+
+        /* ====== PASSO 1.5: PING RÁPIDO Storage + Firestore (erro em < 6s) ====== */
+        if (window.FirebaseAPI.pingFirebaseServices && typeof window.FirebaseAPI.pingFirebaseServices === 'function') {
+            console.log('[SALVAR CESTA] Passo 1.5: Ping rápido Storage/Firestore para validar regras antes de começar upload...');
+            try {
+                const ping = await Promise.race([
+                    window.FirebaseAPI.pingFirebaseServices(),
+                    new Promise((_, rj) => setTimeout(() => rj(new Error('timeout_ping_preupload_7s')), 7000))
+                ]);
+                if (!ping || !ping.ok) {
+                    console.error('[SALVAR CESTA] Ping detectou problema ANTES do upload:', ping && ping.code, ping && ping.message);
+                    showFirebaseError('Configuração (pré-salvar)', ping && ping.rawError,
+                        '<b>Impossível salvar agora:</b> ' + (ping && ping.message ? ping.message : 'Não foi possível validar os serviços.') +
+                        (ping && (ping.code === 'bucket_not_found' || ping.code === 'permission_denied' || ping.code === 'storage_error')
+                            ? ' · <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Storage</a>' : '') +
+                        (ping && (ping.code === 'firestore_permission_denied' || ping.code === 'firestore_disabled')
+                            ? ' · <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:700;text-decoration:underline;">👉 Corrigir Firestore</a>' : ''));
+                    alert(
+                        '❌ ANTES DE SALVAR — VALIDAÇÃO DO FIREBASE REPROVOU:\n\n' +
+                        (ping && ping.message ? ping.message : 'Configuração inválida.') + '\n\n' +
+                        'Como corrigir:\n' +
+                        '1) Abra o banner vermelho no topo (tem links clicáveis diretos)\n' +
+                        '2) Ou abra manualmente:\n' +
+                        '   Storage → Regras: ' + CONSOLE_STORAGE_RULES + '\n' +
+                        '   Firestore → Regras: ' + CONSOLE_FIRESTORE_RULES + '\n' +
+                        '3) Publique as regras com o botão "PUBLICAR"\n' +
+                        '4) Volte aqui e clique em Salvar de novo. Desta vez vai funcionar! 💪'
+                    );
+                    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
+                    return;
+                } else {
+                    console.log('[SALVAR CESTA] Passo 1.5 OK: Ping validou Storage+Firestore prontos.');
+                }
+            } catch (pingErr) {
+                console.warn('[SALVAR CESTA] Ping pré-save falhou (timeout/erro não esperado). Vamos continuar mesmo assim e usar timeouts do upload/save.', pingErr);
+            }
+        }
 
         /* ====== PASSO 2: UPLOAD DA IMAGEM (se houver arquivo novo) ====== */
         let image = pImageInput.value.trim();
