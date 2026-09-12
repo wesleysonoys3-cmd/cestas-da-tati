@@ -321,6 +321,31 @@
                     <!-- Banner fixo de SUCESSO / ERRO do Firebase (apenas para Admin) -->
                     <div id="fbStatusBanner" class="fb-status fb-status-success" style="display:none;margin:0 0 14px;"></div>
 
+                    <!-- Banner PERMANENTE de ajuda: ativar Storage/Firestore e publicar Regras -->
+                    <div id="fbSetupHelper" class="fb-status fb-status-info" style="margin:0 0 14px;padding:14px 16px;line-height:1.6;">
+                        <span style="display:block;font-weight:700;margin-bottom:6px;">⚙️ Configuração Obrigatória do Firebase (faça isso 1x)</span>
+                        <span style="display:block;margin-bottom:6px;">
+                            1) Ative o Firestore →
+                            <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/data" target="_blank"
+                               style="font-weight:600;text-decoration:underline;color:#6B1E3A;">Abrir Firestore → Criar Database (Native Mode)</a>
+                            &nbsp;· Depois publique as regras:
+                            <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/rules" target="_blank"
+                               style="font-weight:700;text-decoration:underline;color:#6B1E3A;">👉 Firestore → Regras → Publicar</a>
+                        </span>
+                        <span style="display:block;margin-bottom:6px;">
+                            2) Ative o Storage →
+                            <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/storage" target="_blank"
+                               style="font-weight:600;text-decoration:underline;color:#6B1E3A;">Abrir Storage → Get Started</a>
+                            &nbsp;· Depois publique as regras:
+                            <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/storage/tatie-atelie-cestas.firebasestorage.app/rules" target="_blank"
+                               style="font-weight:700;text-decoration:underline;color:#6B1E3A;">👉 Storage → Regras → Publicar</a>
+                        </span>
+                        <small style="opacity:.85;">
+                            Sem publicar as regras, nenhuma cesta vai salvar e o botão 💾 Salvar vai ficar carregando até dar timeout
+                            (agora com limite de 12-15 segundos, sem travar infinitamente).
+                        </small>
+                    </div>
+
                     <div id="fbStatus" class="fb-status fb-status-offline">
                         <span class="fb-dot"></span>
                         <span class="fb-status-text">

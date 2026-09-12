@@ -1571,6 +1571,23 @@ textarea.form-input {
 
 .fb-status-error .fb-dot { background: var(--color-danger); }
 
+.fb-status-info {
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    color: #1E3A8A;
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: block;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.fb-status-info a {
+    color: #1D4ED8;
+    text-decoration: underline;
+}
+
 .fb-dot {
     width: 9px;
     height: 9px;

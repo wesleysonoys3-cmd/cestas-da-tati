@@ -1684,6 +1684,33 @@ function showFirebaseSuccess(message) {
     }
 }
 
+const CONSOLE_FIRESTORE_RULES = 'https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/rules';
+const CONSOLE_STORAGE_RULES   = 'https://console.firebase.google.com/project/tatie-atelie-cestas/storage/tatie-atelie-cestas.firebasestorage.app/rules';
+const LINK_CONSOLE_FIREBASE   = 'https://console.firebase.google.com/project/tatie-atelie-cestas';
+const STORAGE_TIMEOUT_MS      = 12000;
+const FIRESTORE_TIMEOUT_MS    = 15000;
+
+/* Helper: cria Promise que rejeita com timeout amigável + barra de progresso fake */
+function promiseTimeoutMs(ms, stage, progressFillEl, progressTextEl, startFakePct, endFakePct) {
+    return new Promise((_, reject) => {
+        let pct = startFakePct;
+        const step = Math.max(1, Math.round((endFakePct - startFakePct) / Math.max(5, Math.floor(ms / 300))));
+        const tick = setInterval(() => {
+            pct = Math.min(endFakePct, pct + step);
+            if (progressFillEl) progressFillEl.style.width = pct + '%';
+        }, 300);
+        setTimeout(() => {
+            clearInterval(tick);
+            if (progressFillEl) progressFillEl.style.width = endFakePct + '%';
+            reject(new Error(
+                'Tempo excedido para ' + stage +
+                ' (esperamos ' + Math.round(ms/1000) + 's e o Firebase não respondeu).' +
+                '\n👉 99% das vezes isso acontece porque AS REGRAS DO STORAGE OU FIRESTORE AINDA NÃO FORAM PUBLICADAS.'
+            ));
+        }, ms);
+    });
+}
+
 async function saveEntityProductAsyncOverride() {
     const saveBtn = document.getElementById('saveProduct');
     const statusEl     = document.getElementById('pUploadStatus');
@@ -1712,10 +1739,15 @@ async function saveEntityProductAsyncOverride() {
         if (!window.FirebaseAPI) {
             throw new Error('SDK do Firebase não foi carregado. Atualize a página (F5) e tente novamente.');
         }
-        await window.FirebaseAPI.init();
-        if (!window.FirebaseAPI.isEnabled()) {
-            throw new Error('Firebase não configurado. Verifique as credenciais no arquivo firebase-init.js.');
+        console.log('[SALVAR CESTA] Passo 1: Inicializando Firebase...');
+        const initOk = await Promise.race([
+            window.FirebaseAPI.init(),
+            promiseTimeoutMs(8000, 'conectar ao Firebase', progressFill, progressText, 2, 10)
+        ]);
+        if (!initOk || !window.FirebaseAPI.isEnabled()) {
+            throw new Error('Firebase não configurado. Verifique as credenciais no arquivo firebase-init.js e sua conexão com a internet.');
         }
+        console.log('[SALVAR CESTA] Passo 1 OK: Firebase inicializado. Projeto:', window.FirebaseAPI.CONFIG.projectId);
 
         /* ====== PASSO 2: UPLOAD DA IMAGEM (se houver arquivo novo) ====== */
         let image = pImageInput.value.trim();
@@ -1725,14 +1757,19 @@ async function saveEntityProductAsyncOverride() {
             if (progressFill) progressFill.style.width = '0%';
             if (progressText) {
                 progressText.className = 'upload-status-text';
-                progressText.textContent = '☁️ Enviando imagem para o Firebase Storage...';
+                progressText.textContent = '☁️ Enviando imagem para o Firebase Storage... (timeout ' + Math.round(STORAGE_TIMEOUT_MS/1000) + 's)';
             }
 
+            console.log('[SALVAR CESTA] Passo 2: Iniciando upload da imagem. Tamanho KB:', Math.round(pendingImageFile.size/1024), 'Nome:', pendingImageFile.name);
+
             try {
-                const up = await window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
-                    if (progressFill) progressFill.style.width = pct + '%';
-                    if (progressText) progressText.textContent = `☁️ Enviando imagem... ${pct}%`;
-                });
+                const up = await Promise.race([
+                    window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
+                        if (progressFill) progressFill.style.width = pct + '%';
+                        if (progressText) progressText.textContent = `☁️ Enviando imagem... ${pct}%`;
+                    }),
+                    promiseTimeoutMs(STORAGE_TIMEOUT_MS, 'enviar a imagem para o Storage', progressFill, progressText, 10, 98)
+                ]);
                 image = up.url || image;
                 pImageInput.value = image;
                 console.log('[FIREBASE STORAGE] Imagem enviada com sucesso → path:', up.path, 'url:', up.url);
@@ -1743,16 +1780,23 @@ async function saveEntityProductAsyncOverride() {
             } catch (uploadErr) {
                 console.error('[FIREBASE STORAGE] Erro no upload da imagem:', uploadErr);
                 showFirebaseError('Upload de Imagem (Storage)', uploadErr,
-                    'Não foi possível enviar a foto para o Storage do Firebase. <br>As regras do Storage podem estar bloqueando ou a internet caiu. Tente novamente.');
-                alert('❌ ERRO AO ENVIAR IMAGEM PARA O FIREBASE:\n\n' +
+                    'Não foi possível enviar a foto para o Storage. <b>As REGRAS do Storage provavelmente não estão PUBLICADAS.</b> Abra o Console do Firebase e publique as regras: <a href="' + CONSOLE_STORAGE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:600;text-decoration:underline;">👉 Abrir Storage → Regras</a>');
+                alert(
+                    '❌ ERRO AO ENVIAR IMAGEM PARA O FIREBASE (Storage)\n\n' +
                     'Mensagem: ' + (uploadErr.message || uploadErr) + '\n\n' +
-                    'VERIFIQUE:\n' +
-                    '1. Sua conexão com a internet\n' +
-                    '2. As Regras do Storage foram publicadas no Firebase Console?\n' +
-                    '3. O arquivo é menor que 5MB e é uma imagem válida.\n');
+                    '99% DOS CASOS SÃO: as REGRAS DO STORAGE AINDA NÃO FORAM PUBLICADAS.\n\n' +
+                    '👉 FAÇA ISSO AGORA (em 1 minuto):\n' +
+                    '1. Abra: ' + CONSOLE_STORAGE_RULES + '\n' +
+                    '2. Cole o texto das Regras que passamos (allow read: if true...)\n' +
+                    '3. CLIQUE NO BOTÃO "PUBLICAR" (MUITO IMPORTANTE — só salvar não basta)\n' +
+                    '4. Volte aqui e clique em 💾 Salvar novamente =)\n\n' +
+                    '(Se aparecer "Get Started" em vez de Regras, clique em Get Started primeiro para ativar o Storage)'
+                );
                 if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
                 return;
             }
+        } else {
+            console.log('[SALVAR CESTA] Passo 2 OK: Sem imagem nova. Usando imagem URL existente:', image ? (image.length > 60 ? image.slice(0, 60) + '...' : image) : '(nenhuma, usará placeholder)');
         }
 
         /* ====== PASSO 3: SALVAR DADOS NO FIRESTORE ====== */
@@ -1766,10 +1810,20 @@ async function saveEntityProductAsyncOverride() {
         };
 
         let docIdToSave = adminEditingId ? String(adminEditingId) : null;
-        console.log('[FIREBASE FIRESTORE] Salvando cesta no Firestore...', { docIdToSave, nome: obj.name, preco: obj.price });
+        console.log('[SALVAR CESTA] Passo 3: Salvando no Firestore...', { docIdToSave, nome: obj.name, preco: obj.price });
 
         try {
-            const saved = await window.FirebaseAPI.saveCesta(obj, docIdToSave);
+            if (progressText) {
+                progressText.className = 'upload-status-text';
+                progressText.textContent = '💾 Gravando dados da cesta no Firestore... (timeout ' + Math.round(FIRESTORE_TIMEOUT_MS/1000) + 's)';
+            }
+            if (progressFill) progressFill.style.width = '85%';
+
+            const saved = await Promise.race([
+                window.FirebaseAPI.saveCesta(obj, docIdToSave),
+                promiseTimeoutMs(FIRESTORE_TIMEOUT_MS, 'salvar dados no Firestore', progressFill, progressText, 85, 99)
+            ]);
+
             if (saved && saved.id) {
                 obj.id = (typeof saved.id === 'number' || /^\d+$/.test(saved.id)) ? Number(saved.id) : saved.id;
             } else if (adminEditingId) {
@@ -1778,19 +1832,23 @@ async function saveEntityProductAsyncOverride() {
                 obj.id = Date.now();
             }
             console.log('[FIREBASE FIRESTORE] Cesta salva com sucesso! doc.id:', obj.id, 'savedResult:', saved);
-            showFirebaseSuccess(`Cesta "${obj.name}" salva na nuvem e visível para todos os clientes agora!`);
+            if (progressFill) progressFill.style.width = '100%';
+            showFirebaseSuccess(`Cesta "${obj.name}" salva na nuvem e visível para todos os clientes agora! <a href="${LINK_CONSOLE_FIREBASE}" target="_blank" style="font-weight:500;text-decoration:underline;color:#1B5E20;">Ver no Console</a>`);
         } catch (firestoreErr) {
             console.error('[FIREBASE FIRESTORE] Erro ao salvar a cesta:', firestoreErr);
             showFirebaseError('Salvar Cesta (Firestore)', firestoreErr,
-                'Não foi possível salvar os dados da cesta no Firestore. <br>As Regras do Firestore provavelmente não foram publicadas.');
-            alert('❌ ERRO AO SALVAR NO FIREBASE FIRESTORE:\n\n' +
+                'Não foi possível salvar os dados no Firestore. <b>As REGRAS do Firestore provavelmente NÃO FORAM PUBLICADAS.</b> Publique as regras aqui: <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:600;text-decoration:underline;">👉 Abrir Firestore → Regras</a>');
+            alert(
+                '❌ ERRO AO SALVAR NO FIREBASE FIRESTORE\n\n' +
                 'Mensagem: ' + (firestoreErr.message || firestoreErr) + '\n\n' +
-                'CAUSAS MAIS COMUNS:\n' +
-                '👉 1. Regras do Firestore NÃO FORAM PUBLICADAS no Console do Firebase\n' +
-                '     (Firestore Database → Regras → Clique em "Publicar")\n' +
-                '👉 2. Sem conexão com a internet\n' +
-                '👉 3. Campos obrigatórios faltando ou credenciais inválidas.\n\n' +
-                'A cesta NÃO foi salva em lugar nenhum. Tente novamente após corrigir.');
+                'CAUSA MAIS COMUM: Regras do Firestore NÃO publicadas!\n\n' +
+                '👉 FAÇA ISSO AGORA (1 minuto):\n' +
+                '1. Abra: ' + CONSOLE_FIRESTORE_RULES + '\n' +
+                '2. Cole as regras (rules_version = \"2\" ... allow read: if true ...)\n' +
+                '3. CLIQUE NO BOTÃO AZUL/VERDE "PUBLICAR" (obrigatório)\n' +
+                '4. Volte aqui e clique em 💾 Salvar de novo!\n\n' +
+                '(Se aparecer "Create database", clique primeiro: crie o Firestore em Native Mode, localização southamerica-east1 ou us-central1)'
+            );
             if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
             return;
         }
@@ -1812,7 +1870,6 @@ async function saveEntityProductAsyncOverride() {
         showFirebaseError('Salvar Cesta (Erro inesperado)', globalErr, globalErr.message);
         alert('❌ Ocorreu um erro inesperado ao salvar a cesta:\n\n' + (globalErr.message || globalErr));
     } finally {
-        // NUNCA MAIS trava no "Processando..."
         if (saveBtn) {
             saveBtn.disabled = false;
             saveBtn.textContent = prevBtnText;
@@ -1837,9 +1894,12 @@ async function deleteEntityAsyncOverride(entity, id) {
         }
         try {
             console.log('[FIREBASE FIRESTORE] Excluindo cesta doc.id:', id);
-            await window.FirebaseAPI.deleteCesta(id);
-            console.log('[FIREBASE FIRESTORE] Cesta doc.id=' + id + ' foi excluída com sucesso.');
-            showFirebaseSuccess('Cesta excluída da nuvem! O catálogo de todos os clientes será atualizado automaticamente.');
+            const deleted = await Promise.race([
+                window.FirebaseAPI.deleteCesta(id),
+                promiseTimeoutMs(10000, 'excluir a cesta no Firestore', null, null, 0, 100)
+            ]);
+            console.log('[FIREBASE FIRESTORE] Cesta doc.id=' + id + ' foi excluída com sucesso.', deleted);
+            showFirebaseSuccess('Cesta excluída da nuvem! O catálogo de todos os clientes será atualizado automaticamente. <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#1B5E20;text-decoration:underline;font-weight:500;">Ver no Console</a>');
             /* onSnapshot vai atualizar products[] e as views automaticamente. */
             try {
                 products = products.filter(p => String(p.id) !== String(id));
@@ -1849,10 +1909,11 @@ async function deleteEntityAsyncOverride(entity, id) {
         } catch (err) {
             console.error('[FIREBASE FIRESTORE] Erro ao excluir cesta doc.id=' + id + ':', err);
             showFirebaseError('Excluir Cesta (Firestore)', err,
-                'Não foi possível excluir a cesta. Verifique as Regras do Firestore e a conexão.');
+                'Não foi possível excluir a cesta. <b>As regras do Firestore provavelmente bloqueiam "delete".</b> Publique as regras aqui: <a href="' + CONSOLE_FIRESTORE_RULES + '" target="_blank" style="color:#6B1E3A;font-weight:600;text-decoration:underline;">👉 Abrir Firestore → Regras</a>');
             alert('❌ ERRO AO EXCLUIR NO FIREBASE FIRESTORE:\n\n' +
                 'Mensagem: ' + (err.message || err) + '\n\n' +
-                '👉 Verifique se as Regras do Firestore permitem exclusão (delete).\n' +
+                '👉 CAUSA MAIS COMUM: Regras do Firestore NÃO publicadas (falta "allow delete" na regra).\n' +
+                '   Abra: ' + CONSOLE_FIRESTORE_RULES + '\n' +
                 '👉 Verifique sua conexão com a internet.');
             return;
         }
