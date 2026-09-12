@@ -1940,12 +1940,26 @@ function deleteEntity(entity, id) {
 }
 
 function openModal(modalId) {
+    /* Sempre sobe pro topo do modal e do body antes de abrir — evita modal "la pra baixo" */
+    try {
+        const modalEl = document.getElementById(modalId);
+        if (modalEl) {
+            const content = modalEl.querySelector('.modal-content');
+            if (content) content.scrollTop = 0;
+        }
+    } catch(_) {}
+    try {
+        if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'auto' });
+    } catch(_) {}
+
     document.getElementById(modalId).classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none'; /* iOS Safari: bloqueia scroll por trás do modal */
 }
 
 function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
+    document.body.style.touchAction = '';
     setTimeout(() => {
         const anyActive = document.querySelectorAll('.modal.active').length > 0;
         if (!anyActive) document.body.style.overflow = '';
