@@ -318,13 +318,16 @@
                 <div id="tab-products" class="admin-tab-content active">
                     <h4 class="admin-section-title">Gerenciar Cestas 🏷️</h4>
 
+                    <!-- Banner fixo de SUCESSO / ERRO do Firebase (apenas para Admin) -->
+                    <div id="fbStatusBanner" class="fb-status fb-status-success" style="display:none;margin:0 0 14px;"></div>
+
                     <div id="fbStatus" class="fb-status fb-status-offline">
                         <span class="fb-dot"></span>
                         <span class="fb-status-text">
-                            Modo Local (localStorage). Configure o Firebase no arquivo <code>firebase-init.js</code> para usar nuvem.
+                            ⏳ Conectando ao Firebase... (Por favor aguarde)
                         </span>
-                        <button id="btnToggleFirebase" class="btn-tiny" title="Liga/desliga o Firebase. Desligar = todas as imagens ficam salvas APENAS no seu navegador (funciona perfeitamente!)." style="margin-left:8px;">🔌 Forçar Modo Local</button>
-                        <button id="btnSyncFirebase" class="btn-tiny" style="margin-left:auto;">☁️ Sincronizar</button>
+                        <button id="btnToggleFirebase" class="btn-tiny" title="Informações sobre o modo 100% nuvem." style="margin-left:8px;">ℹ️ Sobre o Modo Nuvem</button>
+                        <button id="btnSyncFirebase" class="btn-tiny" title="Importa cestas antigas salvas localmente (neste dispositivo) para a nuvem." style="margin-left:auto;">☁️ Importar Cestas Locais → Nuvem</button>
                     </div>
 
                     <div id="adminProductsList" class="admin-list"></div>

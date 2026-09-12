@@ -130,6 +130,8 @@ let adminEditingEntity = null;
 
 function init() {
     loadFromStorage();
+    /* Render inicial temporário: se Firebase não carregar em 2s, mostra cestas padrões.
+       Mas em ~50ms o onSnapshot substitui com as cestas REAIS da nuvem. */
     renderProducts();
     renderDeliveryOptions();
     updateCartCount();
@@ -137,18 +139,23 @@ function init() {
 }
 
 function loadFromStorage() {
-    const storedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    const storedAddons = localStorage.getItem(STORAGE_KEYS.ADDONS);
-    const storedDelivery = localStorage.getItem(STORAGE_KEYS.DELIVERY);
-    const storedCoupons = localStorage.getItem(STORAGE_KEYS.COUPONS);
-    const storedCart = localStorage.getItem(STORAGE_KEYS.CART);
-    const storedWhatsApp = localStorage.getItem(STORAGE_KEYS.WHATSAPP);
+    /* ---------- PRODUTOS (CESTAS): SÃO 100% NUVEM ---------- */
+    /* NÃO LEMOS MAIS DE localStorage['cestasTati_products'].
+       A variável `products` é populada pelo onSnapshot() do Firestore em bootstrapFirebase.
+       Aqui usamos DEFAULT_PRODUCTS apenas como placeholder de carregamento,
+       que é substituído assim que a conexão com o Firebase retorna. */
+    products = DEFAULT_PRODUCTS.slice();
+
+    /* ---------- DADOS CLIENTE E CONFIGURAÇÕES: FICAM LOCAIS ---------- */
+    const storedAddons    = localStorage.getItem(STORAGE_KEYS.ADDONS);
+    const storedDelivery  = localStorage.getItem(STORAGE_KEYS.DELIVERY);
+    const storedCoupons   = localStorage.getItem(STORAGE_KEYS.COUPONS);
+    const storedCart      = localStorage.getItem(STORAGE_KEYS.CART);
+    const storedWhatsApp  = localStorage.getItem(STORAGE_KEYS.WHATSAPP);
     const deliveryResetApplied = localStorage.getItem(DEFAULT_DELIVERY_RESET_FLAG);
 
-    products = storedProducts ? JSON.parse(storedProducts) : DEFAULT_PRODUCTS;
     addons = storedAddons ? JSON.parse(storedAddons) : DEFAULT_ADDONS;
 
-    /* ---------- Atualiza taxas de Brasília/DF na 1a vez após a atualização ---------- */
     if (!storedDelivery || !deliveryResetApplied) {
         deliveryRates = DEFAULT_DELIVERY.slice();
         saveToStorage(STORAGE_KEYS.DELIVERY, deliveryRates);
@@ -161,10 +168,19 @@ function loadFromStorage() {
     cart = storedCart ? JSON.parse(storedCart) : [];
     whatsappNumber = storedWhatsApp || DEFAULT_WHATSAPP;
 
-    if (!storedProducts) saveToStorage(STORAGE_KEYS.PRODUCTS, products);
-    if (!storedAddons) saveToStorage(STORAGE_KEYS.ADDONS, addons);
-    if (!storedCoupons) saveToStorage(STORAGE_KEYS.COUPONS, coupons);
+    if (!storedAddons)   saveToStorage(STORAGE_KEYS.ADDONS,    addons);
+    if (!storedCoupons)  saveToStorage(STORAGE_KEYS.COUPONS,   coupons);
     if (!storedWhatsApp) localStorage.setItem(STORAGE_KEYS.WHATSAPP, whatsappNumber);
+}
+
+/* Remove entrada de produtos do localStorage se existir (limpeza pós-migração) */
+function nukeLocalProductsCache() {
+    try {
+        if (localStorage.getItem(STORAGE_KEYS.PRODUCTS)) {
+            localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
+            console.log('[Limpeza] Removida entrada antiga de produtos em localStorage. Cestas agora são 100% Firestore/Storage.');
+        }
+    } catch(_) {}
 }
 
 function saveToStorage(key, value) {
@@ -1380,37 +1396,85 @@ function updateFirebaseStatus(state, msg) {
 async function bootstrapFirebase() {
     try {
         if (!window.FirebaseAPI) {
-            updateFirebaseStatus('offline',
-                'Firebase SDK não carregou. <b>Upload de fotos FUNCIONA</b> (salvas em memória local), mas para aparecer em todos os dispositivos é necessário configurar o Firebase.');
+            updateFirebaseStatus('error',
+                '❌ Firebase SDK não carregou. O cadastro de cestas não funcionará. Atualize a página e verifique se o arquivo firebase-init.js está carregando corretamente.');
+            showFirebaseError('Inicialização (SDK)', new Error('FirebaseAPI não foi criado no window.'),
+                'O carregamento do SDK do Firebase falhou. Atualize a página (F5) ou verifique sua conexão com a internet.');
             return false;
         }
         const ok = await window.FirebaseAPI.init();
         firebaseEnabledRuntime = !!ok;
+
         if (ok) {
             updateFirebaseStatus('online',
-                `☁️ Conectado ao Firebase · Projeto: <code>${window.FirebaseAPI.CONFIG.projectId}</code>. Alterações são salvas na nuvem e aparecem em TODOS os dispositivos.`);
+                `☁️ Conectado ao Firebase · Projeto: <code>${window.FirebaseAPI.CONFIG.projectId}</code>. <b>Modo 100% nuvem:</b> salvar/excluir uma cesta reflete para TODOS os clientes em tempo real.`);
+
+            /* ====== onSnapshot EM TEMPO REAL: ATUALIZA A VITRINE E PAINEL ADMIN AUTOMATICAMENTE ====== */
+            const snapshotUnsub = window.FirebaseAPI.subscribeProdutos(
+                (listaCestas) => {
+                    const onlyActive = Array.isArray(listaCestas)
+                        ? listaCestas.filter(p => p.ativo !== false)
+                        : [];
+                    console.log('[FIREBASE onSnapshot - CESTAS] Recebemos', onlyActive.length, 'cestas ativas do Firestore. Atualizando vitrine e admin...');
+                    products = onlyActive.length > 0 ? onlyActive : [];
+                    try { renderProducts(); } catch(_) {}
+                    try { renderAdminProducts(); } catch(_) {}
+                    /* Limpa o localStorage antigo (1 vez) para garantir que o velho não seja confundido */
+                    nukeLocalProductsCache();
+                },
+                (err) => {
+                    console.error('[FIREBASE onSnapshot - CESTAS] Erro ao receber atualizações:', err);
+                    showFirebaseError('Leitura em tempo real (onSnapshot)', err,
+                        'Não foi possível ler as cestas do Firestore. <b>Causa provável: Regras do Firestore não publicadas ou bloqueando a leitura.</b>');
+                }
+            );
+            if (typeof snapshotUnsub === 'function') {
+                window.__firebaseUnsubscribeProdutos = snapshotUnsub;
+            }
+
+            /* GetDocs inicial extra (garante 1ª carga mesmo em conexão ruim) */
+            try {
+                const loadOnce = await window.FirebaseAPI.loadCestas();
+                if (loadOnce && loadOnce.ok && Array.isArray(loadOnce.list) && loadOnce.list.length > 0) {
+                    const onlyActive = loadOnce.list.filter(p => p.ativo !== false);
+                    if (onlyActive.length > 0 && products.length === 0) {
+                        products = onlyActive;
+                        try { renderProducts(); } catch(_) {}
+                        try { renderAdminProducts(); } catch(_) {}
+                    }
+                }
+            } catch(_) {}
+
+            return true;
         } else {
-            updateFirebaseStatus('offline',
-                'Modo Local ativado. ✅ <b>Upload de fotos funciona normalmente</b> (as imagens são comprimidas e salvas no seu navegador). Atenção: cestas/fotos criadas aqui só aparecem NESTE dispositivo. Para aparecer em outros, configure o Firebase no arquivo <code>firebase-init.js</code>.');
+            updateFirebaseStatus('error',
+                '❌ Firebase NÃO foi inicializado. <b>Sem o Firebase, o cadastro de cestas não funciona (não há modo local).</b> Cole as credenciais corretamente no arquivo <code>firebase-init.js</code>.');
+            showFirebaseError('Inicialização (Credenciais)', new Error('Firebase retornou disabled no init().'),
+                'Credenciais do Firebase estão com placeholders. Preencha o objeto FIREBASE_CONFIG em firebase-init.js com as credenciais reais do projeto.');
+            return false;
         }
-        return !!ok;
     } catch (err) {
         console.error('bootstrapFirebase error', err);
         firebaseEnabledRuntime = false;
         updateFirebaseStatus('error',
-            `⚠️ Erro Firebase: ${err.message}. Alterando para Modo Local (upload de fotos continua funcionando).`);
+            `⚠️ Erro ao conectar Firebase: ${err.message}. <b>O cadastro de cestas não funcionará até este problema ser resolvido.</b>`);
+        showFirebaseError('Inicialização', err, 'Conexão com o Firebase não pôde ser feita. Verifique sua internet e as credenciais.');
         return false;
     }
 }
 
 async function loadProductsFromFirebaseOrFallback() {
+    /* Antigo fallback. Como onSnapshot() já está ligado em bootstrapFirebase, esta função
+       agora só garante uma carga getDocs() extra e é mantida para compatibilidade de chamadas antigas. */
+    nukeLocalProductsCache();
     if (firebaseEnabledRuntime && window.FirebaseAPI) {
         const r = await window.FirebaseAPI.loadCestas();
         if (r.ok && Array.isArray(r.list) && r.list.length > 0) {
-            const merged = r.list.filter(p => p.ativo !== false);
-            if (merged.length > 0) {
-                products = merged;
-                saveToStorage(STORAGE_KEYS.PRODUCTS, products);
+            const onlyActive = r.list.filter(p => p.ativo !== false);
+            if (onlyActive.length > 0) {
+                products = onlyActive;
+                try { renderProducts(); } catch(_) {}
+                try { renderAdminProducts(); } catch(_) {}
                 return true;
             }
         }
@@ -1418,8 +1482,74 @@ async function loadProductsFromFirebaseOrFallback() {
     return false;
 }
 
+async function importLocalProductsToFirebase() {
+    const btn = document.getElementById('btnSyncFirebase');
+    if (!firebaseEnabledRuntime || !window.FirebaseAPI) {
+        alert('❌ Firebase não está disponível agora. Atualize a página, corrija as credenciais e as Regras do Firestore/Storage.');
+        return;
+    }
+
+    /* 1. Carrega dados ANTIGOS do localStorage deste dispositivo (se houver) */
+    const oldRaw = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+    let oldList = [];
+    try { oldList = oldRaw ? JSON.parse(oldRaw) : []; } catch(_) { oldList = []; }
+
+    /* 2. Se não tem nada no localStorage antigo, tenta usar a variável `products`
+          atual (que pode ter DEFAULT_PRODUCTS ou os dados do onSnapshot já) */
+    if (!Array.isArray(oldList) || oldList.length === 0) {
+        oldList = (Array.isArray(products) && products.length > 0) ? products.slice() : [];
+    }
+
+    if (oldList.length === 0) {
+        alert('ℹ️ Não há nenhuma cesta antiga para importar. Cadastre suas cestas no painel admin.');
+        return;
+    }
+
+    if (!confirm(`Deseja realmente importar ${oldList.length} cestas locais para a nuvem?\n\n` +
+                `Se elas já existirem no Firestore com o mesmo ID, serão atualizadas (mescladas).\n` +
+                `Caso contrário, serão criadas como novas cestas.`)) return;
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Importando...'; }
+    let okCount = 0;
+    let failCount = 0;
+    for (let i = 0; i < oldList.length; i++) {
+        const p = oldList[i];
+        try {
+            /* Limpa campos legados / image Base64 excessiva (não enviamos Base64 ao Firestore) */
+            const payload = { ...p };
+            if (typeof payload.image === 'string' && payload.image.indexOf('data:') === 0) {
+                /* Aviso: imagens em Base64 locais não podem ser migradas automaticamente.
+                   Será preciso re-uploadar a foto no painel admin após importar. */
+                payload.image = 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=beautiful%20gift%20basket%20pink%20wine%20decoration%20ribbon&image_size=landscape_4_3';
+            }
+            await window.FirebaseAPI.saveCesta(payload, p.id ? String(p.id) : null);
+            okCount++;
+        } catch (e) {
+            failCount++;
+            console.warn('[Importar] Falhou ao importar cesta ' + (p && p.name ? p.name : 'sem nome') + ':', e);
+        }
+    }
+
+    /* Limpa o cache local depois de importar */
+    nukeLocalProductsCache();
+
+    if (failCount === 0) {
+        alert(`✅ Importação concluída!\n\n${okCount} cestas importadas para a nuvem!\n\n` +
+              `👉 AVISO: as cestas antigas que tinham fotos em Base64 local (salvas no seu navegador) receberam uma foto placeholder.\n` +
+              `Edite cada cesta no Painel Admin para re-uploadar a foto original de volta =)`);
+        showFirebaseSuccess(`${okCount} cestas locais importadas para a nuvem com sucesso!`);
+    } else {
+        alert(`⚠️ Importação finalizada com falhas:\n\n✅ ${okCount} importadas com sucesso\n❌ ${failCount} falharam.\n\nVerifique as Regras do Firestore (precisam permitir "create" e "update").`);
+        showFirebaseError('Importar Cestas Locais → Nuvem',
+            new Error(`${failCount} falhas ao importar.`),
+            `Importadas ${okCount} cestas. ${failCount} falharam (verifique as Regras do Firestore).`);
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '☁️ Importar Cestas Locais → Nuvem'; }
+}
+
 async function bindProductImageUploader(editingProduct) {
     pendingImageFile = null;
+    pendingBase64Image = null; // NÃO USAMOS MAIS Base64 (modo 100% nuvem)
     if (pendingObjectUrl) { try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {} pendingObjectUrl = null; }
     const fileInput   = document.getElementById('pImageFile');
     const fileLabel   = document.getElementById('pImageFileLabel');
@@ -1437,7 +1567,7 @@ async function bindProductImageUploader(editingProduct) {
     if (progressFill) progressFill.style.width = '0%';
     if (progressText) {
         progressText.className = 'upload-status-text';
-        progressText.textContent = 'Enviando imagem...';
+        progressText.textContent = 'Ao clicar em 💾 Salvar abaixo, a foto será enviada para o Storage do Firebase.';
     }
 
     if (editingProduct && editingProduct.image && !pImageInput.value) {
@@ -1462,47 +1592,21 @@ async function bindProductImageUploader(editingProduct) {
             return;
         }
         pendingImageFile = f;
-        pendingBase64Image = null;
+        pendingBase64Image = null; // desativado em modo 100% nuvem
         if (pendingObjectUrl) try { URL.revokeObjectURL(pendingObjectUrl); } catch(_) {}
         pendingObjectUrl = URL.createObjectURL(f);
         previewWrap.style.display = 'block';
         previewImg.src = pendingObjectUrl;
         fileLabel.textContent = `${f.name} (${(f.size/1024).toFixed(1)} KB)`;
 
-        try {
-            if (!firebaseEnabledRuntime) {
-                if (statusEl) {
-                    statusEl.style.display = 'flex';
-                    if (progressFill) progressFill.style.width = '40%';
-                    if (progressText) {
-                        progressText.className = 'upload-status-text';
-                        progressText.textContent = '🖼️ Processando imagem (salvando localmente)...';
-                    }
-                }
-                const b64 = await Promise.race([
-                    compressImageToBase64(f, 1200, 0.78),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout — a foto demorou muito para ser processada. Tente uma imagem menor.')), 20000))
-                ]);
-                pendingBase64Image = b64;
-                if (progressFill) progressFill.style.width = '100%';
-                if (progressText) {
-                    progressText.className = 'upload-status-text success';
-                    progressText.textContent = `✅ Foto pronta! Tamanho: ~${kbOfBase64(b64)} KB (ao 💾 Salvar, ela entra direto na cesta).`;
-                }
-            } else if (statusEl) {
-                statusEl.style.display = 'none';
-            }
-        } catch (err) {
-            pendingBase64Image = null;
-            console.error(err);
-            if (progressText) {
-                progressText.className = 'upload-status-text error';
-                progressText.textContent = '⚠️ ' + err.message + ' (mesmo assim, ao salvar tentaremos novamente)';
-            }
-        } finally {
-            // NUNCA trava o botão de upload
-            if (progressFill && !progressFill.style.width) progressFill.style.width = '100%';
+        if (statusEl) statusEl.style.display = 'flex';
+        if (progressFill) progressFill.style.width = '100%';
+        if (progressText) {
+            progressText.className = 'upload-status-text success';
+            progressText.textContent =
+                '✅ Foto selecionada! (prévia carregada). Ao clicar em 💾 Salvar abaixo, a imagem será enviada para o Firebase Storage.';
         }
+        console.log('[Upload Imagem] Foto selecionada para upload posterior ao salvar. File:', f.name, 'tamanho KB:', Math.round(f.size/1024));
     };
 
     previewClear.onclick = () => {
@@ -1559,6 +1663,27 @@ function overrideCloseEntityForm() {
 overrideOpenEntityForm();
 overrideCloseEntityForm();
 
+function showFirebaseError(where, err, userMessage) {
+    const banner = document.getElementById('fbStatusBanner');
+    const msg = userMessage || ('Não foi possível completar a operação: ' + (err && err.message ? err.message : err));
+    if (banner) {
+        banner.className = 'fb-status fb-status-error';
+        banner.innerHTML = '❌ <b>Erro Firebase (' + where + '):</b> ' + msg +
+            ' &nbsp; <small>(Verifique as Regras do Firestore/Storage e sua conexão com a internet).</small>';
+        banner.style.display = 'block';
+    }
+    console.error('[FIREBASE ERROR - ' + where + ']', err);
+}
+
+function showFirebaseSuccess(message) {
+    const banner = document.getElementById('fbStatusBanner');
+    if (banner) {
+        banner.className = 'fb-status fb-status-success';
+        banner.innerHTML = '✅ <b>Sucesso:</b> ' + (message || 'Operação realizada com sucesso no Firebase!');
+        banner.style.display = 'block';
+    }
+}
+
 async function saveEntityProductAsyncOverride() {
     const saveBtn = document.getElementById('saveProduct');
     const statusEl     = document.getElementById('pUploadStatus');
@@ -1568,150 +1693,124 @@ async function saveEntityProductAsyncOverride() {
     const prevBtnText = saveBtn ? saveBtn.textContent : '💾 Salvar';
 
     try {
-        let image = pImageInput.value.trim();
+        /* ====== PASSO 0: VALIDAÇÕES BÁSICAS ====== */
         const name = document.getElementById('pName').value.trim();
         const itemsText = document.getElementById('pItems').value;
         const desc = document.getElementById('pDesc').value.trim();
-        const price = parseFloat(document.getElementById('pPrice').value);
+        const priceStr = document.getElementById('pPrice').value;
+        const price = parseFloat(priceStr);
 
-        if (!name || !price || isNaN(price)) {
-            alert('Preencha nome e preço da cesta.');
+        if (!name || !priceStr || isNaN(price)) {
+            alert('Preencha nome e preço da cesta para salvar.');
             return;
         }
         const items = itemsText.split('\n').map(i => i.trim()).filter(i => i.length > 0);
 
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⌛ Salvando na nuvem...'; }
+
+        /* ====== PASSO 1: FIREBASE OBRIGATÓRIO ====== */
+        if (!window.FirebaseAPI) {
+            throw new Error('SDK do Firebase não foi carregado. Atualize a página (F5) e tente novamente.');
+        }
+        await window.FirebaseAPI.init();
+        if (!window.FirebaseAPI.isEnabled()) {
+            throw new Error('Firebase não configurado. Verifique as credenciais no arquivo firebase-init.js.');
+        }
+
+        /* ====== PASSO 2: UPLOAD DA IMAGEM (se houver arquivo novo) ====== */
+        let image = pImageInput.value.trim();
+
         if (pendingImageFile) {
-            if (saveBtn) {
-                saveBtn.disabled = true;
-                saveBtn.textContent = '⌛ Processando...';
+            if (statusEl) statusEl.style.display = 'flex';
+            if (progressFill) progressFill.style.width = '0%';
+            if (progressText) {
+                progressText.className = 'upload-status-text';
+                progressText.textContent = '☁️ Enviando imagem para o Firebase Storage...';
             }
 
-            if (firebaseEnabledRuntime && window.FirebaseAPI && !forceLocalStorageMode) {
-                if (statusEl) statusEl.style.display = 'flex';
+            try {
+                const up = await window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
+                    if (progressFill) progressFill.style.width = pct + '%';
+                    if (progressText) progressText.textContent = `☁️ Enviando imagem... ${pct}%`;
+                });
+                image = up.url || image;
+                pImageInput.value = image;
+                console.log('[FIREBASE STORAGE] Imagem enviada com sucesso → path:', up.path, 'url:', up.url);
                 if (progressText) {
-                    progressText.className = 'upload-status-text';
-                    progressText.textContent = 'Enviando imagem para o Firebase...';
+                    progressText.className = 'upload-status-text success';
+                    progressText.textContent = '✅ Imagem enviada! Salvando cesta no Firestore...';
                 }
-                let firebaseUploadOk = false;
-                try {
-                    const up = await Promise.race([
-                        window.FirebaseAPI.uploadImage(pendingImageFile, (pct) => {
-                            if (progressFill) progressFill.style.width = pct + '%';
-                            if (progressText) progressText.textContent = `Enviando imagem... ${pct}%`;
-                        }),
-                        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout — o Storage não respondeu em 8s. Usaremos a foto local.')), 8000))
-                    ]);
-                    image = up.url;
-                    pImageInput.value = image;
-                    firebaseUploadOk = true;
-                    if (progressText) {
-                        progressText.className = 'upload-status-text success';
-                        progressText.textContent = '✅ Imagem enviada! Salvando cesta...';
-                    }
-                } catch (err) {
-                    // FIREBASE FALHOU → FALLBACK AUTOMÁTICO PARA BASE64 LOCAL (sem travar!)
-                    console.warn('Firebase upload falhou, usando Base64 local.', err);
-                    firebaseUploadOk = false;
-                    if (progressText) {
-                        progressText.className = 'upload-status-text error';
-                        progressText.textContent = '⚠️ Nuvem indisponível: salvando foto no seu navegador...';
-                    }
-                    // Tenta gerar Base64 da foto pra salvar localmente
-                    try {
-                        if (!pendingBase64Image) {
-                            pendingBase64Image = await Promise.race([
-                                compressImageToBase64(pendingImageFile, 1200, 0.78),
-                                new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout ao preparar a foto.')), 20000))
-                            ]);
-                        }
-                        image = pendingBase64Image;
-                        pImageInput.value = '';
-                        if (progressText) {
-                            progressText.className = 'upload-status-text success';
-                            progressText.textContent = `✅ Foto salva localmente! (~${kbOfBase64(image)} KB). Dica: publique as Regras do Storage/Firestore pra nuvem funcionar também.`;
-                        }
-                    } catch (b64Err) {
-                        console.error('Fallback Base64 também falhou:', b64Err);
-                        alert('A imagem não pôde ser enviada para o Firebase e também não pôde ser preparada localmente.\nErro: ' + b64Err.message);
-                        return;
-                    }
-                }
-            } else {
-                if (!pendingBase64Image) {
-                    if (statusEl) {
-                        statusEl.style.display = 'flex';
-                        if (progressFill) progressFill.style.width = '40%';
-                        if (progressText) {
-                            progressText.className = 'upload-status-text';
-                            progressText.textContent = '🖼️ Preparando imagem (salvando localmente)...';
-                        }
-                    }
-                    try {
-                        pendingBase64Image = await Promise.race([
-                            compressImageToBase64(pendingImageFile, 1200, 0.78),
-                            new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout — a foto demorou muito. Tente uma imagem menor.')), 25000))
-                        ]);
-                    } catch (err) {
-                        console.error(err);
-                        if (progressText) {
-                            progressText.className = 'upload-status-text error';
-                            progressText.textContent = '❌ Erro: ' + err.message;
-                        }
-                        alert('Erro ao processar a imagem: ' + err.message + '\n\nTente uma foto JPG menor.');
-                        return;
-                    }
-                }
-                image = pendingBase64Image;
-                pImageInput.value = '';
-                if (statusEl) {
-                    if (progressFill) progressFill.style.width = '100%';
-                    if (progressText) {
-                        progressText.className = 'upload-status-text success';
-                        progressText.textContent = `✅ Foto pronta! ~${kbOfBase64(image)} KB. Salvando cesta...`;
-                    }
-                }
+            } catch (uploadErr) {
+                console.error('[FIREBASE STORAGE] Erro no upload da imagem:', uploadErr);
+                showFirebaseError('Upload de Imagem (Storage)', uploadErr,
+                    'Não foi possível enviar a foto para o Storage do Firebase. <br>As regras do Storage podem estar bloqueando ou a internet caiu. Tente novamente.');
+                alert('❌ ERRO AO ENVIAR IMAGEM PARA O FIREBASE:\n\n' +
+                    'Mensagem: ' + (uploadErr.message || uploadErr) + '\n\n' +
+                    'VERIFIQUE:\n' +
+                    '1. Sua conexão com a internet\n' +
+                    '2. As Regras do Storage foram publicadas no Firebase Console?\n' +
+                    '3. O arquivo é menor que 5MB e é uma imagem válida.\n');
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
+                return;
             }
         }
 
+        /* ====== PASSO 3: SALVAR DADOS NO FIRESTORE ====== */
         const obj = {
             name,
             image: image || 'https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=beautiful%20gift%20basket%20pink%20wine%20decoration%20ribbon&image_size=landscape_4_3',
             items,
             description: desc,
-            price
+            price: Number(price) || 0,
+            ativo: true
         };
 
-        if (adminEditingId) {
-            const idx = products.findIndex(p => p.id === adminEditingId);
-            if (idx !== -1) products[idx] = { ...products[idx], ...obj };
-        } else {
-            obj.id = generateId();
-            products.push(obj);
+        let docIdToSave = adminEditingId ? String(adminEditingId) : null;
+        console.log('[FIREBASE FIRESTORE] Salvando cesta no Firestore...', { docIdToSave, nome: obj.name, preco: obj.price });
+
+        try {
+            const saved = await window.FirebaseAPI.saveCesta(obj, docIdToSave);
+            if (saved && saved.id) {
+                obj.id = (typeof saved.id === 'number' || /^\d+$/.test(saved.id)) ? Number(saved.id) : saved.id;
+            } else if (adminEditingId) {
+                obj.id = adminEditingId;
+            } else {
+                obj.id = Date.now();
+            }
+            console.log('[FIREBASE FIRESTORE] Cesta salva com sucesso! doc.id:', obj.id, 'savedResult:', saved);
+            showFirebaseSuccess(`Cesta "${obj.name}" salva na nuvem e visível para todos os clientes agora!`);
+        } catch (firestoreErr) {
+            console.error('[FIREBASE FIRESTORE] Erro ao salvar a cesta:', firestoreErr);
+            showFirebaseError('Salvar Cesta (Firestore)', firestoreErr,
+                'Não foi possível salvar os dados da cesta no Firestore. <br>As Regras do Firestore provavelmente não foram publicadas.');
+            alert('❌ ERRO AO SALVAR NO FIREBASE FIRESTORE:\n\n' +
+                'Mensagem: ' + (firestoreErr.message || firestoreErr) + '\n\n' +
+                'CAUSAS MAIS COMUNS:\n' +
+                '👉 1. Regras do Firestore NÃO FORAM PUBLICADAS no Console do Firebase\n' +
+                '     (Firestore Database → Regras → Clique em "Publicar")\n' +
+                '👉 2. Sem conexão com a internet\n' +
+                '👉 3. Campos obrigatórios faltando ou credenciais inválidas.\n\n' +
+                'A cesta NÃO foi salva em lugar nenhum. Tente novamente após corrigir.');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = prevBtnText; }
+            return;
         }
 
-        saveToStorage(STORAGE_KEYS.PRODUCTS, products);
-
-        if (firebaseEnabledRuntime && window.FirebaseAPI && !forceLocalStorageMode) {
-            try {
-                await Promise.race([
-                    window.FirebaseAPI.saveCesta(
-                        { id: adminEditingId || obj.id, ...obj },
-                        String(adminEditingId || obj.id)
-                    ),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout no Firestore (dados locais foram salvos).')), 10000))
-                ]);
-            } catch (err) {
-                console.warn('Falhou ao salvar no Firestore, salvo localmente apenas.', err);
-                updateFirebaseStatus('error', `⚠️ Erro Firestore: ${err.message}. Dados salvos apenas localmente (você pode sincronizar depois).`);
+        /* ====== PASSO 4: Sincronizar UI ====== */
+        if (statusEl) {
+            if (progressFill) progressFill.style.width = '100%';
+            if (progressText) {
+                progressText.className = 'upload-status-text success';
+                progressText.textContent = '🎉 Tudo salvo na nuvem! Atualizando a lista...';
             }
         }
 
         renderProducts();
-        renderAdminProducts();
+        try { renderAdminProducts(); } catch(_) {}
         closeEntityForm('product');
     } catch (globalErr) {
-        console.error('saveEntityProductAsyncOverride falhou:', globalErr);
-        alert('Ocorreu um erro inesperado ao salvar a cesta:\n\n' + (globalErr.message || globalErr));
+        console.error('[saveEntityProduct] Erro inesperado:', globalErr);
+        showFirebaseError('Salvar Cesta (Erro inesperado)', globalErr, globalErr.message);
+        alert('❌ Ocorreu um erro inesperado ao salvar a cesta:\n\n' + (globalErr.message || globalErr));
     } finally {
         // NUNCA MAIS trava no "Processando..."
         if (saveBtn) {
@@ -1723,7 +1822,7 @@ async function saveEntityProductAsyncOverride() {
 
 async function deleteEntityAsyncOverride(entity, id) {
     const msgMap = {
-        product: 'Tem certeza que deseja excluir esta cesta?',
+        product: 'Tem certeza que deseja EXCLUIR esta cesta?\n\n⚠️ Ela será removida PERMANENTEMENTE do Firebase e desaparecerá do catálogo de TODOS os clientes.',
         addon: 'Tem certeza que deseja excluir este adicional?',
         delivery: 'Tem certeza que deseja excluir esta taxa de entrega?',
         coupon: 'Tem certeza que deseja excluir este cupom?'
@@ -1731,77 +1830,88 @@ async function deleteEntityAsyncOverride(entity, id) {
     if (!confirm(msgMap[entity] || 'Confirmar exclusão?')) return;
 
     if (entity === 'product') {
-        products = products.filter(p => p.id !== id);
-        saveToStorage(STORAGE_KEYS.PRODUCTS, products);
-        if (firebaseEnabledRuntime && window.FirebaseAPI) {
-            try { await window.FirebaseAPI.deleteCesta(id); }
-            catch (err) {
-                console.warn('Erro ao excluir cesta na nuvem:', err);
-                updateFirebaseStatus('error', `⚠️ Erro ao excluir na nuvem: ${err.message}`);
-            }
+        /* ====== EXCLUSÃO SOMENTE NO FIRESTORE (produtos são 100% nuvem) ====== */
+        if (!window.FirebaseAPI || !window.FirebaseAPI.isEnabled()) {
+            alert('❌ Firebase não está disponível agora.\nVerifique sua conexão e as credenciais. Não foi possível excluir.');
+            return;
         }
-        renderProducts();
-        renderAdminProducts();
+        try {
+            console.log('[FIREBASE FIRESTORE] Excluindo cesta doc.id:', id);
+            await window.FirebaseAPI.deleteCesta(id);
+            console.log('[FIREBASE FIRESTORE] Cesta doc.id=' + id + ' foi excluída com sucesso.');
+            showFirebaseSuccess('Cesta excluída da nuvem! O catálogo de todos os clientes será atualizado automaticamente.');
+            /* onSnapshot vai atualizar products[] e as views automaticamente. */
+            try {
+                products = products.filter(p => String(p.id) !== String(id));
+            } catch(_) {}
+            try { renderProducts(); } catch(_) {}
+            try { renderAdminProducts(); } catch(_) {}
+        } catch (err) {
+            console.error('[FIREBASE FIRESTORE] Erro ao excluir cesta doc.id=' + id + ':', err);
+            showFirebaseError('Excluir Cesta (Firestore)', err,
+                'Não foi possível excluir a cesta. Verifique as Regras do Firestore e a conexão.');
+            alert('❌ ERRO AO EXCLUIR NO FIREBASE FIRESTORE:\n\n' +
+                'Mensagem: ' + (err.message || err) + '\n\n' +
+                '👉 Verifique se as Regras do Firestore permitem exclusão (delete).\n' +
+                '👉 Verifique sua conexão com a internet.');
+            return;
+        }
     } else if (entity === 'addon') {
         addons = addons.filter(a => a.id !== id);
         saveToStorage(STORAGE_KEYS.ADDONS, addons);
-        renderAdminAddons();
+        try { renderAdminAddons(); } catch(_) {}
     } else if (entity === 'delivery') {
         deliveryRates = deliveryRates.filter(d => d.id !== id);
         saveToStorage(STORAGE_KEYS.DELIVERY, deliveryRates);
-        renderAdminDelivery();
-        renderDeliveryOptions();
+        try { renderAdminDelivery(); } catch(_) {}
+        try { renderDeliveryOptions(); } catch(_) {}
     } else if (entity === 'coupon') {
         coupons = coupons.filter(c => c.id !== id);
         saveToStorage(STORAGE_KEYS.COUPONS, coupons);
-        renderAdminCoupons();
+        try { renderAdminCoupons(); } catch(_) {}
     }
 }
 
 async function syncLocalProductsToFirebase() {
-    const btn = document.getElementById('btnSyncFirebase');
-    if (!firebaseEnabledRuntime || !window.FirebaseAPI) {
-        alert('🔌 Firebase desligado ou não configurado. Ligue-o clicando no botão "🔌 Reativar Firebase" ou cole suas credenciais.');
-        return;
-    }
-    if (!confirm(`Deseja enviar suas ${products.length} cestas locais para o Firebase?\n(Isto sobrescreve cestas de mesmo ID.)`)) return;
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizando...'; }
-    updateFirebaseStatus('online', '⏳ Sincronizando cestas locais com o Firebase...');
-    const r = await window.FirebaseAPI.syncLocalToFirebase(products);
-    if (r.ok) {
-        updateFirebaseStatus('online',
-            `✅ Sincronização concluída! <b>${r.okCount}</b> cestas enviadas${r.fail ? ` · ${r.fail} falhas.` : '.'}`);
-        alert(`Sincronização concluída!\n\n✅ ${r.okCount} cestas enviadas com sucesso${r.fail ? `\n⚠️ ${r.fail} cestas falharam` : ''}.`);
-    } else {
-        alert('Erro na sincronização: ' + r.message);
-    }
-    if (btn) { btn.disabled = false; btn.textContent = '☁️ Sincronizar'; }
+    alert('ℹ️  Modo atual: ARMAZENAMENTO 100% NA NUVEM.\n\n' +
+        'As cestas são automaticamente salvas no Firebase Firestore e Storage.\n' +
+        'Não há mais a etapa de "sincronizar local → nuvem", pois tudo é salvo direto na nuvem.\n\n' +
+        'Se suas cestas antigas estão salvas apenas localmente neste dispositivo:\n' +
+        '  1. Clique em "☁️ Importar Cestas Locais para Nuvem" abaixo\n' +
+        '  2. Ou recadastre as cestas pelo painel admin =)');
 }
 
 let forceLocalStorageMode = false;
 
 function toggleFirebaseForceLocal() {
-    forceLocalStorageMode = !forceLocalStorageMode;
-    const btn = document.getElementById('btnToggleFirebase');
-    const btnSync = document.getElementById('btnSyncFirebase');
-    if (forceLocalStorageMode) {
-        firebaseEnabledRuntime = false;
-        updateFirebaseStatus('offline',
-            '🔌 Modo Local FORÇADO. ✅ Upload de fotos funciona normalmente (as imagens são salvas APENAS no seu navegador). Botão "Reativar Firebase" para usar a nuvem.');
-        if (btn) btn.textContent = '🔌 Reativar Firebase';
-        if (btnSync) btnSync.disabled = true;
-    } else {
-        if (btn) btn.textContent = '🔌 Forçar Modo Local';
-        if (btnSync) btnSync.disabled = false;
-        bootstrapFirebase();
-    }
+    /* Modo Local foi REMOVIDO para produtos/cestas (100% nuvem obrigatório).
+       Esta função existe para não quebrar o botão do HTML — ao invés de mudar estado,
+       exibe uma mensagem informando o usuário. */
+    const info =
+        'ℹ️  O MODO LOCAL foi desativado para as cestas!\n\n' +
+        'Agora as cestas são SALVAS APENAS NO FIREBASE (100% nuvem):\n' +
+        '   • Todos usuários veem as mesmas cestas em TEMPO REAL\n' +
+        '   • Alterações em um celular aparecem INSTANTANEAMENTE em todos\n\n' +
+        'Se você tem cestas antigas salvas LOCALMENTE no seu dispositivo:\n' +
+        '   1. Abra o Painel Admin → tab "Cestas"\n' +
+        '   2. Clique no botão "☁️ Importar Cestas Locais → Nuvem"\n' +
+        '   3. Confirme e pronto! Suas cestas serão movidas para a nuvem.';
+    alert(info);
+    console.log('[toggleFirebaseForceLocal] Invocado: Modo Local desativado para produtos/cestas (100% nuvem agora).');
 }
 
 async function bindFirebaseUI() {
+    /* Botão antigo "Sync Local → Firebase" agora vira "Importar Locais → Nuvem" */
     const syncBtn = document.getElementById('btnSyncFirebase');
-    if (syncBtn) syncBtn.addEventListener('click', syncLocalProductsToFirebase);
+    if (syncBtn) {
+        syncBtn.textContent = '☁️ Importar Cestas Locais → Nuvem';
+        syncBtn.addEventListener('click', importLocalProductsToFirebase);
+    }
     const toggleBtn = document.getElementById('btnToggleFirebase');
-    if (toggleBtn) toggleBtn.addEventListener('click', toggleFirebaseForceLocal);
+    if (toggleBtn) {
+        toggleBtn.textContent = 'ℹ️ Sobre o Modo Nuvem';
+        toggleBtn.addEventListener('click', toggleFirebaseForceLocal);
+    }
 }
 
 /* ====== Sobrescreve os handlers globais (antes do DOMContentLoaded chamar init()) ====== */
@@ -1815,12 +1925,19 @@ document.addEventListener('DOMContentLoaded', async function () {
     init(); // inicializa o resto do site como sempre
     setCepHelpWhatsAppLink(); // inicializa link de ajuda do CEP
     bindFirebaseUI();
+
+    /* bootstrapFirebase() já conecta o onSnapshot(cestas) que atualiza a vitrine AUTOMATICAMENTE
+       em tempo real. Não precisamos mais esperar retorno. */
     const fbOk = await bootstrapFirebase();
-    if (fbOk) {
-        // primeiro carregamento: se a nuvem tiver dados, usa eles
-        await loadProductsFromFirebaseOrFallback();
-        renderProducts();
-        try { renderAdminProducts(); } catch(_) {}
+
+    if (!fbOk) {
+        /* Se não conectar, mostra banner fixo e placeholder DEFAULT_PRODUCTS continua na vitrine. */
+        showFirebaseError('Conexão Geral', new Error('bootstrapFirebase retornou false'),
+            'Não foi possível conectar ao Firebase. As cestas cadastradas no painel admin NÃO serão salvas.');
+    } else {
+        /* Segunda tentativa garante que a vitrine tenha as cestas mais novas
+           mesmo se o onSnapshot ainda estiver chegando em conexões lentas. */
+        try { await loadProductsFromFirebaseOrFallback(); } catch(_) {}
     }
 });
 

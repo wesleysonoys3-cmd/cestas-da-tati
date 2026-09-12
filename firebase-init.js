@@ -168,12 +168,41 @@
         return { id: ref.id, ...productData, image: payload.imagem_url };
     }
 
+    async function updateCesta(docId, partial) {
+        const ready = await init();
+        if (!ready) throw new Error('Firebase não configurado.');
+        const ref = firestoreLib.doc(db, FIREBASE_COLLECTION, String(docId));
+        await firestoreLib.setDoc(ref, { ...partial, atualizado_em: firestoreLib ? firestoreLib.serverTimestamp() : new Date().toISOString() }, { merge: true });
+        return true;
+    }
+
     async function deleteCesta(docId) {
         const ready = await init();
         if (!ready) throw new Error('Firebase não configurado.');
         const ref = firestoreLib.doc(db, FIREBASE_COLLECTION, String(docId));
         await firestoreLib.deleteDoc(ref);
         return true;
+    }
+
+    function subscribeProdutos(onUpdate, onError) {
+        if (!firestoreLib || !db) {
+            if (typeof onError === 'function') onError(new Error('Firestore não inicializado. Certifique-se de configurar o Firebase corretamente.'));
+            return () => {};
+        }
+        const col = firestoreLib.collection(db, FIREBASE_COLLECTION);
+        const q = firestoreLib.query(col, firestoreLib.orderBy('criado_em', 'desc'));
+        const unsubscribe = firestoreLib.onSnapshot(q,
+            (snap) => {
+                const list = [];
+                snap.forEach((doc) => list.push(mapDocToProduct(doc)));
+                if (typeof onUpdate === 'function') onUpdate(list);
+            },
+            (err) => {
+                console.error('[Firebase] onSnapshot(cestas) falhou:', err);
+                if (typeof onError === 'function') onError(err);
+            }
+        );
+        return unsubscribe;
     }
 
     async function syncLocalToFirebase(localProducts) {
@@ -204,7 +233,9 @@
         uploadImage,
         loadCestas,
         saveCesta,
+        updateCesta,
         deleteCesta,
+        subscribeProdutos,
         syncLocalToFirebase,
         get initialized() { return initPromise ? initPromise : Promise.resolve(false); }
     };
