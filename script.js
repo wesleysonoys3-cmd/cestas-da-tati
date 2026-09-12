@@ -131,6 +131,7 @@ let storeContact = {
     instagram: DEFAULT_INSTAGRAM,
     facebook: DEFAULT_FACEBOOK
 };
+let storeOpenGlobal = { open: true, reabre_em: '', mensagem_fechado: '' };
 let selectedProduct = null;
 let modalQty = 1;
 let modalSelectedAddons = [];
@@ -603,6 +604,19 @@ function openProductModal(productId) {
 
     renderAddonsList();
     updateModalUI();
+
+    /* LOJA FECHADA: aplica desabilita no botão de adicionar ao carrinho */
+    try {
+        const btn = document.getElementById('addToCartBtn');
+        if (btn) {
+            const oldText = btn.textContent || '';
+            disableCartWhenClosed(btn, null);
+            if (!storeOpenGlobal.open && !btn.hasAttribute('data-title-old')) {
+                btn.setAttribute('data-title-old', oldText);
+            }
+        }
+    } catch(_) {}
+
     openModal('productModal');
 }
 
@@ -647,6 +661,16 @@ function updateModalUI() {
 
 function addToCartFromModal() {
     if (!selectedProduct) return;
+
+    /* LOJA FECHADA: bloqueio adicional (se botão desabilitado não funcionar) */
+    if (!storeOpenGlobal.open) {
+        alert('🛑 A loja está fechada para novos pedidos no momento.\n\n' +
+            (storeOpenGlobal.reabre_em ? `⏰ ${storeOpenGlobal.reabre_em}.\n\n` : '') +
+            (storeOpenGlobal.mensagem_fechado || '') +
+            '\n\nObrigada pelo carinho! 💗 Tatiê Ateliê & Cestas.');
+        return;
+    }
+
     const notes = document.getElementById('notesField').value.trim();
     const addonsTotal = modalSelectedAddons.reduce((sum, id) => {
         const a = addons.find(x => x.id === id);
@@ -778,6 +802,22 @@ function updateCartSummary() {
         : (delivery === 0 ? 'Grátis' : formatCurrency(delivery));
     document.getElementById('summaryTotal').textContent = formatCurrency(Math.max(0, total));
     document.getElementById('pixTotalValue').textContent = 'Total: ' + formatCurrency(Math.max(0, total));
+
+    /* LOJA FECHADA: desabilita botão "Finalizar Pedido" se existir */
+    try {
+        const btnFinish = document.getElementById('finishOrder');
+        if (btnFinish) {
+            if (storeOpenGlobal.open) {
+                btnFinish.disabled = false;
+                btnFinish.style.opacity = '';
+                btnFinish.style.cursor = '';
+            } else {
+                btnFinish.disabled = true;
+                btnFinish.style.opacity = '0.7';
+                btnFinish.style.cursor = 'not-allowed';
+            }
+        }
+    } catch(_) {}
 }
 
 /* Alias usado no handleCepSearch (mantém compatibilidade) */
@@ -852,6 +892,14 @@ function applyCoupon() {
 }
 
 function finishOrder() {
+    /* LOJA FECHADA: bloqueio adicional (se botão desabilitado não funcionar) */
+    if (!storeOpenGlobal.open) {
+        alert('🛑 A loja está fechada para novos pedidos no momento.\n\n' +
+            (storeOpenGlobal.reabre_em ? `⏰ ${storeOpenGlobal.reabre_em}.\n\n` : '') +
+            (storeOpenGlobal.mensagem_fechado || '') +
+            '\n\nObrigada pelo carinho! 💗 Tatiê Ateliê & Cestas.');
+        return;
+    }
     const neighborhoodId = parseInt(document.getElementById('neighborhoodSelect').value);
     const deliveryDate = document.getElementById('deliveryDate').value;
     const deliveryTime = document.getElementById('deliveryTime').value;
@@ -1047,6 +1095,7 @@ function switchAdminTab(tabName) {
     else if (tabName === 'addons') renderAdminAddons();
     else if (tabName === 'delivery') renderAdminDelivery();
     else if (tabName === 'coupons') renderAdminCoupons();
+    else if (tabName === 'storeStatus') renderAdminStoreStatusTab();
     else if (tabName === 'contact') renderAdminContactTab();
     else if (tabName === 'contactConfig') renderAdminContactConfigTab();
 }
@@ -1287,6 +1336,199 @@ function resetStoreContactConfig() {
     renderFooter();
     try { renderTopSocialBar(); } catch(_) {}
     alert('✅ Dados de contato restaurados para os padrões da loja.');
+}
+
+/* ========== LOJA ABERTA / FECHADA (via Firestore onSnapshot GLOBAL) ========== */
+function renderAdminStoreStatusTab() {
+    const host = document.getElementById('tab-storeStatus');
+    if (!host) return;
+    const isOpen = !!storeOpenGlobal.open;
+    host.innerHTML = `
+        <h4 class="admin-section-title">🟢/🛑 Loja Aberta ou Fechada</h4>
+        <p style="color:#4B5563;margin:0 0 18px;">Ative ou desative os pedidos aqui. A alteração é <b>GLOBAL</b>: atualiza em tempo real em TODOS os dispositivos e navegadores. Os clientes verão um banner vermelho no topo da página e não conseguirão mais adicionar cestas ao carrinho enquanto a loja estiver fechada.</p>
+
+        <div class="store-status-card">
+            <div class="store-status-row">
+                <div>
+                    <div class="store-status-title">Pedidos estão</div>
+                    <div id="storeStatusLiveText" class="store-status-big ${isOpen ? 'store-status-open' : 'store-status-closed'}">
+                        ${isOpen ? '🟢 ABERTOS para todos' : '🛑 FECHADOS agora'}
+                    </div>
+                </div>
+                <label class="switch-toggle" title="Clique para mudar">
+                    <input type="checkbox" id="storeStatusToggle" ${isOpen ? 'checked' : ''}>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group" style="margin-top:18px;">
+                <label class="form-label">📅 Reabertura prevista (opcional, aparece no banner ao cliente)</label>
+                <input type="text" id="cfgReabre" class="form-input" maxlength="80"
+                    placeholder="Ex.: Reabrimos segunda-feira às 09h / Volto dia 20/09"
+                    value="${escapeAttr(storeOpenGlobal.reabre_em || '')}">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">✍️ Mensagem personalizada (opcional, aparece no banner quando fechada)</label>
+                <textarea id="cfgFechadoMsg" class="form-input" rows="3"
+                    placeholder="Ex.: Estamos de recesso até o dia 25. Obrigada pelo carinho! 💗">${escapeHtml(storeOpenGlobal.mensagem_fechado || '')}</textarea>
+            </div>
+
+            <div class="admin-form-buttons" style="justify-content:flex-start;">
+                <button id="storeStatusSaveBtn" class="btn-primary">💾 Salvar e aplicar agora</button>
+                <button id="storeStatusReabrirBtn" class="btn-outline" style="${isOpen ? 'display:none;' : ''}">🟢 Reabrir a loja agora</button>
+                <button id="storeStatusFecharBtn" class="btn-outline" style="${isOpen ? '' : 'display:none;'}">🛑 Fechar a loja agora</button>
+            </div>
+
+            <div style="margin-top:18px;padding:14px 16px;border-radius:12px;background:#EFF6FF;border:1px dashed #3B82F6;color:#1E40AF;line-height:1.55;">
+                💡 <b>Como funciona?</b> Quando você fecha a loja:
+                <ul style="margin:6px 0 0 22px;padding:0;">
+                    <li>Todos os clientes recebem o banner vermelho no topo <b>SEM PRECISAR ATUALIZAR A PÁGINA</b> (onSnapshot)</li>
+                    <li>Botão "Adicionar ao carrinho" em TODAS as cestas fica desativado e cinza</li>
+                    <li>Botão "Finalizar Pedido" do carrinho também fica bloqueado</li>
+                    <li>Badge do header muda de "🟢 Aberto hoje" para "🛑 Fechado agora"</li>
+                    <li>Clientes com carrinho cheio não conseguem finalizar enquanto a loja estiver fechada</li>
+                </ul>
+            </div>
+        </div>
+    `;
+
+    const toggle = host.querySelector('#storeStatusToggle');
+    const btnSave = host.querySelector('#storeStatusSaveBtn');
+    const btnReabrir = host.querySelector('#storeStatusReabrirBtn');
+    const btnFechar = host.querySelector('#storeStatusFecharBtn');
+
+    if (toggle) toggle.addEventListener('change', () => {
+        const nowChecked = toggle.checked;
+        const big = host.querySelector('#storeStatusLiveText');
+        if (big) {
+            big.textContent = nowChecked ? '🟢 ABERTOS para todos' : '🛑 FECHADOS agora';
+            big.classList.toggle('store-status-open', nowChecked);
+            big.classList.toggle('store-status-closed', !nowChecked);
+        }
+        if (btnReabrir) btnReabrir.style.display = nowChecked ? 'none' : '';
+        if (btnFechar) btnFechar.style.display = nowChecked ? '' : 'none';
+    });
+
+    if (btnSave)    btnSave.addEventListener('click', saveStoreStatusFromAdmin);
+    if (btnReabrir) btnReabrir.addEventListener('click', () => { if (toggle) toggle.checked = true; toggle.dispatchEvent(new Event('change')); saveStoreStatusFromAdmin(); });
+    if (btnFechar)  btnFechar.addEventListener('click', () =>  { if (toggle) toggle.checked = false; toggle.dispatchEvent(new Event('change')); saveStoreStatusFromAdmin(); });
+}
+
+async function saveStoreStatusFromAdmin() {
+    const host = document.getElementById('tab-storeStatus');
+    if (!host) return;
+    const toggle = host.querySelector('#storeStatusToggle');
+    const inputReabre = host.querySelector('#cfgReabre');
+    const inputMsg = host.querySelector('#cfgFechadoMsg');
+
+    const open = toggle ? toggle.checked : true;
+    const reabre_em = (inputReabre ? inputReabre.value : '').trim();
+    const mensagem_fechado = (inputMsg ? inputMsg.value : '').trim();
+
+    if (!window.FirebaseAPI || typeof window.FirebaseAPI.setStoreStatus !== 'function') {
+        alert('⚠️ Firebase ainda não conectou. Aguarde alguns segundos e tente novamente.');
+        return;
+    }
+
+    try {
+        await Promise.race([
+            window.FirebaseAPI.setStoreStatus({ open, reabre_em, mensagem_fechado }),
+            new Promise((_, rj) => setTimeout(() => rj(new Error('timeout_setStoreStatus_12s')), 12000))
+        ]);
+        alert('✅ Status da loja alterado com sucesso!\n\n' +
+            (open ? '🟢 Loja ABERTA — clientes já podem adicionar cestas ao carrinho.' :
+                   '🛑 Loja FECHADA — banner vermelho apareceu para todos em tempo real, carrinho bloqueado.') +
+            '\n\nA alteração já está valendo GLOBALMENTE em todos os dispositivos.');
+    } catch (err) {
+        console.error('[SALVAR LOJA ABERTA] Falhou:', err);
+        alert('❌ Não foi possível salvar o status da loja.\nCausa provável: regras do Firestore não publicadas ou sem conexão com internet.\n\nErro: ' + (err.message || String(err)));
+    }
+}
+
+function applyStoreStatusGlobal(status) {
+    const prev = storeOpenGlobal || { open: true };
+    storeOpenGlobal = Object.assign({ open: true, reabre_em: '', mensagem_fechado: '' }, status || {});
+    renderStoreClosedBannerAndBadge();
+    try { renderAdminStoreStatusTab(); } catch(_) {}
+    if (prev.open !== storeOpenGlobal.open) {
+        try { renderProducts(); } catch(_) {}
+    }
+    try { renderCartModal(); } catch(_) {}
+    try { updateCartSummary(); } catch(_) {}
+}
+
+function renderStoreClosedBannerAndBadge() {
+    const isOpen = !!storeOpenGlobal.open;
+    /* 1) Banner topo da vitrine */
+    const banner = document.getElementById('storeClosedBanner');
+    const tit = document.getElementById('storeClosedTit');
+    const msg = document.getElementById('storeClosedMsg');
+    if (banner) {
+        if (isOpen) {
+            banner.style.display = 'none';
+        } else {
+            if (tit) tit.textContent = '🛑 A loja está fechada para novos pedidos no momento.';
+            if (msg) {
+                const parts = [];
+                if (storeOpenGlobal.reabre_em) parts.push(`⏰ ${storeOpenGlobal.reabre_em}.`);
+                if (storeOpenGlobal.mensagem_fechado) parts.push(storeOpenGlobal.mensagem_fechado);
+                msg.textContent = parts.length ? (' ' + parts.join(' ')) : '';
+            }
+            banner.style.display = 'block';
+        }
+    }
+    /* 2) Badge header */
+    const statusDot = document.querySelector('.status-dot');
+    const statusText = document.getElementById('statusText');
+    if (statusDot) {
+        statusDot.style.background = isOpen ? '#22C55E' : '#EF4444';
+        statusDot.style.boxShadow = `0 0 0 4px ${isOpen ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)'}`;
+    }
+    if (statusText) {
+        statusText.textContent = isOpen
+            ? (storeOpenGlobal.reabre_em ? 'Aberto hoje' : 'Aberto hoje')
+            : '🛑 Fechado agora';
+        statusText.style.color = isOpen ? '' : '#B91C1C';
+        statusText.style.fontWeight = isOpen ? '' : '700';
+    }
+    /* 3) Tab no admin muda cor de fundo */
+    const tabBtn = document.querySelector('.admin-tab[data-tab="storeStatus"]');
+    if (tabBtn) {
+        tabBtn.textContent = isOpen ? '🟢 Loja Aberta' : '🛑 Loja Fechada';
+        tabBtn.style.background = isOpen ? '' : '#FEF2F2';
+        tabBtn.style.color = isOpen ? '' : '#991B1B';
+    }
+}
+
+function disableCartWhenClosed(btnAdd, btnFinish) {
+    const isOpen = !!storeOpenGlobal.open;
+    if (btnAdd && typeof btnAdd.disabled !== 'undefined') {
+        btnAdd.disabled = !isOpen;
+        if (!isOpen) {
+            btnAdd.setAttribute('data-title-old', btnAdd.textContent || '');
+            btnAdd.innerHTML = '🛑 Loja fechada';
+            btnAdd.style.opacity = '0.7';
+            btnAdd.style.cursor = 'not-allowed';
+        } else {
+            if (btnAdd.hasAttribute('data-title-old')) {
+                btnAdd.textContent = btnAdd.getAttribute('data-title-old');
+                btnAdd.removeAttribute('data-title-old');
+            }
+            btnAdd.style.opacity = '';
+            btnAdd.style.cursor = '';
+        }
+    }
+    if (btnFinish && typeof btnFinish.disabled !== 'undefined') {
+        btnFinish.disabled = !isOpen;
+        if (!isOpen) {
+            btnFinish.style.opacity = '0.7';
+            btnFinish.style.cursor = 'not-allowed';
+        } else {
+            btnFinish.style.opacity = '';
+            btnFinish.style.cursor = '';
+        }
+    }
 }
 
 function formatWhatsAppDisplay(raw) {
@@ -2455,6 +2697,20 @@ document.addEventListener('DOMContentLoaded', async function () {
     bindFirebaseUI();
     try { renderFooter(); } catch(_) {}
     try { renderTopSocialBar(); } catch(_) {}
+    try { renderStoreClosedBannerAndBadge(); } catch(_) {}
+
+    /* ====== onSnapshot(Loja Aberta/Fechada) — GLOBAL em todos dispositivos ====== */
+    try {
+        if (window.FirebaseAPI && typeof window.FirebaseAPI.subscribeStoreStatus === 'function') {
+            window.FirebaseAPI.subscribeStoreStatus(
+                (status) => {
+                    console.log('[FIREBASE onSnapshot - LOJA] Status recebido:', status);
+                    applyStoreStatusGlobal(status);
+                },
+                (err) => console.warn('[FIREBASE onSnapshot - LOJA] Erro (assumimos loja aberta):', err)
+            );
+        }
+    } catch(_) {}
 
     /* bootstrapFirebase() já conecta o onSnapshot(cestas) que atualiza a vitrine AUTOMATICAMENTE
        em tempo real. Não precisamos mais esperar retorno. */

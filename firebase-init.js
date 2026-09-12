@@ -326,6 +326,85 @@
         return unsubscribe;
     }
 
+    /* ---------- LOJA ABERTA / FECHADA (doc store_config/status) ---------- */
+    const COL_STORE_CONFIG = 'store_config';
+    const DOC_STORE_STATUS = 'status';
+
+    function mapStoreStatusDoc(doc) {
+        if (!doc || !doc.exists) return null;
+        const d = doc.data() || {};
+        return {
+            open: d.open !== false,
+            reabre_em: typeof d.reabre_em === 'string' ? d.reabre_em : '',
+            mensagem_fechado: typeof d.mensagem_fechado === 'string' ? d.mensagem_fechado : '',
+            atualizado_em: d.atualizado_em ? (d.atualizado_em.toDate ? d.atualizado_em.toDate().toISOString() : String(d.atualizado_em)) : null,
+            atualizado_por: typeof d.atualizado_por === 'string' ? d.atualizado_por : ''
+        };
+    }
+
+    async function getStoreStatus() {
+        const ready = await init();
+        if (!ready) return { ok: false, status: { open: true, reabre_em: '', mensagem_fechado: '' } };
+        try {
+            const ref = firestoreLib.doc(db, COL_STORE_CONFIG, DOC_STORE_STATUS);
+            const snap = await firestoreLib.getDoc(ref);
+            const status = mapStoreStatusDoc(snap);
+            return {
+                ok: true,
+                status: status || { open: true, reabre_em: '', mensagem_fechado: '' }
+            };
+        } catch (err) {
+            console.warn('[Firebase] getStoreStatus falhou (assumimos loja aberta):', err);
+            return { ok: false, status: { open: true, reabre_em: '', mensagem_fechado: '' } };
+        }
+    }
+
+    async function setStoreStatus(partial) {
+        const ready = await init();
+        if (!ready) throw new Error('Firebase não configurado.');
+        const ref = firestoreLib.doc(db, COL_STORE_CONFIG, DOC_STORE_STATUS);
+        const payload = {
+            ...(typeof partial.open === 'boolean' ? { open: partial.open } : {}),
+            ...(typeof partial.reabre_em === 'string' ? { reabre_em: partial.reabre_em } : {}),
+            ...(typeof partial.mensagem_fechado === 'string' ? { mensagem_fechado: partial.mensagem_fechado } : {}),
+            atualizado_em: firestoreLib.serverTimestamp(),
+            atualizado_por: 'admin'
+        };
+        await firestoreLib.setDoc(ref, payload, { merge: true });
+        return true;
+    }
+
+    function subscribeStoreStatus(onUpdate, onError) {
+        let cleaned = false;
+        (async () => {
+            const ready = await init();
+            if (cleaned) return;
+            if (!ready || !firestoreLib || !db) {
+                if (typeof onUpdate === 'function') onUpdate({ open: true, reabre_em: '', mensagem_fechado: '' });
+                return;
+            }
+            const ref = firestoreLib.doc(db, COL_STORE_CONFIG, DOC_STORE_STATUS);
+            const unsub = firestoreLib.onSnapshot(ref,
+                (doc) => {
+                    const status = mapStoreStatusDoc(doc) || { open: true, reabre_em: '', mensagem_fechado: '' };
+                    if (typeof onUpdate === 'function') onUpdate(status);
+                },
+                (err) => {
+                    console.warn('[Firebase] onSnapshot(store_config/status) falhou (assumimos loja aberta):', err);
+                    if (typeof onError === 'function') onError(err);
+                    if (typeof onUpdate === 'function') onUpdate({ open: true, reabre_em: '', mensagem_fechado: '' });
+                }
+            );
+            if (typeof window !== 'undefined') {
+                window.__firebaseUnsubscribeStoreStatus = unsub;
+            }
+        })();
+        return () => {
+            cleaned = true;
+            try { if (typeof window.__firebaseUnsubscribeStoreStatus === 'function') window.__firebaseUnsubscribeStoreStatus(); } catch(_) {}
+        };
+    }
+
     async function syncLocalToFirebase(localProducts) {
         const ready = await init();
         if (!ready) return { ok: false, message: 'Firebase não configurado.' };
@@ -357,6 +436,9 @@
         updateCesta,
         deleteCesta,
         subscribeProdutos,
+        getStoreStatus,
+        setStoreStatus,
+        subscribeStoreStatus,
         syncLocalToFirebase,
         pingFirebaseServices,
         get initialized() { return initPromise ? initPromise : Promise.resolve(false); }

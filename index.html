@@ -21,6 +21,18 @@
     <script src="firebase-init.js" defer></script>
 </head>
 <body>
+    <!-- Banner quando a LOJA ESTÁ FECHADA (só aparece quando você desativar os pedidos) -->
+    <div id="storeClosedBanner" class="store-closed-banner" style="display:none;">
+        <div class="container store-closed-inner">
+            <span class="store-closed-icon">🛑</span>
+            <div class="store-closed-text">
+                <b id="storeClosedTit">A loja está fechada para novos pedidos no momento.</b>
+                <span id="storeClosedMsg"></span>
+            </div>
+            <span class="store-closed-emoji">💗</span>
+        </div>
+    </div>
+
     <!-- Faixa SUPERIOR de contato/redes (visível ANTES do header, no topo MÁXIMO da página) -->
     <div class="top-contact-strip">
         <div class="container top-contact-strip-inner">
@@ -326,6 +338,7 @@
                     <button class="admin-tab" data-tab="addons">Adicionais</button>
                     <button class="admin-tab" data-tab="delivery">Taxas</button>
                     <button class="admin-tab" data-tab="coupons">Cupons</button>
+                    <button class="admin-tab" data-tab="storeStatus">🟢 Loja Aberta</button>
                     <button class="admin-tab" data-tab="contact">📞 Contato</button>
                     <button class="admin-tab" data-tab="contactConfig">⚙️ Contato</button>
                 </div>
@@ -516,6 +529,7 @@
                     </div>
                 </div>
 
+                <div id="tab-storeStatus" class="admin-tab-content"></div>
                 <div id="tab-contact" class="admin-tab-content"></div>
                 <div id="tab-contactConfig" class="admin-tab-content"></div>
             </div>
