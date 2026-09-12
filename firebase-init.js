@@ -390,7 +390,10 @@
             const ready = await init();
             if (cleaned) return;
             if (!ready || !firestoreLib || !db) {
-                if (typeof onUpdate === 'function') onUpdate({ open: true, reabre_em: '', mensagem_fechado: '' });
+                /* Não mandamos open=true automaticamente. O script.js decide qual fallback usar
+                   (localStorage ou default). Isso evita sobrescrever status local FECHADO com ABERTO
+                   quando o Firestore não inicializa por permissão. */
+                if (typeof onError === 'function') onError(new Error('Firestore não inicializado (subscribeStoreStatus).'));
                 return;
             }
             const ref = firestoreLib.doc(db, COL_STORE_CONFIG, DOC_STORE_STATUS);
@@ -403,13 +406,13 @@
                     } else {
                         console.log('[Firebase] onSnapshot(store_status) → STATUS DIRETO DO SERVIDOR ✅');
                     }
-                    const status = mapStoreStatusDoc(doc) || { open: true, reabre_em: '', mensagem_fechado: '' };
-                    if (typeof onUpdate === 'function') onUpdate(status, { doCache, doServidor: !doCache });
+                    const status = mapStoreStatusDoc(doc) || null;
+                    /* doc não existe → status = null. Deixa o script.js decidir (usa localStorage ou open=true default). */
+                    if (typeof onUpdate === 'function') onUpdate(status, { doCache, doServidor: !doCache, docExists: !!status });
                 },
                 (err) => {
-                    console.warn('[Firebase] onSnapshot(store_config/status) falhou (assumimos loja aberta):', err);
+                    console.warn('[Firebase] onSnapshot(store_config/status) falhou (NÃO alteramos status local, deixamos script.js decidir):', err);
                     if (typeof onError === 'function') onError(err);
-                    if (typeof onUpdate === 'function') onUpdate({ open: true, reabre_em: '', mensagem_fechado: '' });
                 }
             );
             if (typeof window !== 'undefined') {

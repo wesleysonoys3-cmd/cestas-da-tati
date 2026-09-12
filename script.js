@@ -6,7 +6,8 @@ const STORAGE_KEYS = {
     CART: 'cestasTati_cart',
     ADMIN_LOGGED: 'cestasTati_adminLogged',
     WHATSAPP: 'cestasTati_whatsapp',
-    STORE_CONTACT: 'cestasTati_storeContact'
+    STORE_CONTACT: 'cestasTati_storeContact',
+    STORE_STATUS: 'cestasTati_storeStatus'
 };
 
 const ADMIN_USERNAME = 'tati2026';
@@ -204,6 +205,18 @@ function loadFromStorage() {
         }
     }
     whatsappNumber = storeContact && storeContact.whatsapp ? storeContact.whatsapp : (storedWhatsApp || DEFAULT_WHATSAPP);
+
+    /* ---------- STATUS LOJA (Aberta/Fechada) — fallback local se Firestore não autorizar ---------- */
+    const storedStoreStatus = localStorage.getItem(STORAGE_KEYS.STORE_STATUS);
+    if (storedStoreStatus) {
+        try {
+            const parsed = JSON.parse(storedStoreStatus);
+            storeOpenGlobal = Object.assign({ open: true, reabre_em: '', mensagem_fechado: '' }, parsed || {});
+            console.log('[loadFromStorage] Status da loja carregado do localStorage:', storeOpenGlobal.open ? 'ABERTA' : 'FECHADA');
+        } catch (_) {
+            storeOpenGlobal = { open: true, reabre_em: '', mensagem_fechado: '' };
+        }
+    }
 
     if (!storedAddons)   saveToStorage(STORAGE_KEYS.ADDONS,    addons);
     if (!storedCoupons)  saveToStorage(STORAGE_KEYS.COUPONS,   coupons);
@@ -1423,6 +1436,31 @@ function renderAdminStoreStatusTab() {
                     <li>Clientes com carrinho cheio não conseguem finalizar enquanto a loja estiver fechada</li>
                 </ul>
             </div>
+
+            <div style="margin-top:16px;padding:16px 18px;border-radius:14px;background:#FEF9C3;border:1px solid #CA8A04;color:#713F12;line-height:1.6;">
+                🔐 <b>Apareceu "Missing or insufficient permissions"?</b> Suas regras do Firestore precisam liberar a coleção <code style="background:#FEF08A;padding:1px 6px;border-radius:4px;">store_config</code>.
+                <div style="margin-top:10px;">
+                    <a href="https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/rules" target="_blank"
+                       style="display:inline-block;padding:7px 14px;background:#713F12;color:#FFF;text-decoration:none;border-radius:999px;font-weight:600;">
+                       👉 Abrir Firestore → Regras
+                    </a>
+                    <button type="button" id="copyFirestoreRulesBtn"
+                       style="margin-left:8px;padding:7px 14px;background:#92400E;color:#FFF;border:none;border-radius:999px;font-weight:600;cursor:pointer;">
+                       📋 Copiar regras prontas
+                    </button>
+                </div>
+                <pre id="firestoreRulesReady" style="margin-top:12px;padding:12px 14px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;font-size:12px;line-height:1.55;overflow-x:auto;">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /cestas/{document=**} {
+      allow read, write: if true;
+    }
+    match /store_config/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}</pre>
+            </div>
         </div>
     `;
 
@@ -1430,6 +1468,28 @@ function renderAdminStoreStatusTab() {
     const btnSave = host.querySelector('#storeStatusSaveBtn');
     const btnReabrir = host.querySelector('#storeStatusReabrirBtn');
     const btnFechar = host.querySelector('#storeStatusFecharBtn');
+    const btnCopyRules = host.querySelector('#copyFirestoreRulesBtn');
+
+    if (btnCopyRules) btnCopyRules.addEventListener('click', () => {
+        const pre = document.getElementById('firestoreRulesReady');
+        if (pre) {
+            const txt = pre.textContent || pre.innerText;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(txt).then(
+                    () => alert('✅ Regras copiadas! Agora é só colar no Console do Firebase e clicar em Publicar.'),
+                    () => {
+                        const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+                        ta.select(); try { document.execCommand('copy'); alert('✅ Regras copiadas!'); } catch(_) {}
+                        document.body.removeChild(ta);
+                    }
+                );
+            } else {
+                const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+                ta.select(); try { document.execCommand('copy'); alert('✅ Regras copiadas!'); } catch(_) {}
+                document.body.removeChild(ta);
+            }
+        }
+    });
 
     if (toggle) toggle.addEventListener('change', () => {
         const nowChecked = toggle.checked;
@@ -1459,8 +1519,11 @@ async function saveStoreStatusFromAdmin() {
     const reabre_em = (inputReabre ? inputReabre.value : '').trim();
     const mensagem_fechado = (inputMsg ? inputMsg.value : '').trim();
 
+    /* 1) APLICAR LOCALMENTE DE FORMA IMEDIATA (funciona mesmo sem permissão Firestore) */
+    applyStoreStatusGlobal({ open, reabre_em, mensagem_fechado }, { origem: 'localstorage' });
+
     if (!window.FirebaseAPI || typeof window.FirebaseAPI.setStoreStatus !== 'function') {
-        alert('⚠️ Firebase ainda não conectou. Aguarde alguns segundos e tente novamente.');
+        alert('✅ Alteração salva LOCALMENTE no seu aparelho.\n\n⚠️ Firebase ainda não conectou. A alteração valerá para este dispositivo agora. Para sincronizar com TODOS os clientes, atualize a página (F5) e tente salvar novamente quando aparecer "☁️ Conectado ao Firebase".');
         return;
     }
 
@@ -1474,8 +1537,31 @@ async function saveStoreStatusFromAdmin() {
                    '🛑 Loja FECHADA — banner vermelho apareceu para todos em tempo real, carrinho bloqueado.') +
             '\n\nA alteração já está valendo GLOBALMENTE em todos os dispositivos.');
     } catch (err) {
-        console.error('[SALVAR LOJA ABERTA] Falhou:', err);
-        alert('❌ Não foi possível salvar o status da loja.\nCausa provável: regras do Firestore não publicadas ou sem conexão com internet.\n\nErro: ' + (err.message || String(err)));
+        console.error('[SALVAR LOJA ABERTA] Falhou (mas já salvamos LOCALMENTE):', err);
+        const ePerm = /permission|permiss|insufficient|denied/i.test(err.message || String(err));
+        const rulesLink = 'https://console.firebase.google.com/project/tatie-atelie-cestas/firestore/rules';
+        if (ePerm) {
+            alert('⚠️ Funcionou no SEU APARELHO, mas NÃO sincronizou com os outros!\n\n' +
+                'Problema: Faltam PERMISSÕES no Firestore para a coleção "store_config".\n\n' +
+                'COMO RESOLVER (1 minuto):\n' +
+                '1) Abra este link no Console Firebase → ' + rulesLink + '\n' +
+                '2) Apague as regras antigas e cole o texto abaixo (completinho):\n\n' +
+                'rules_version = \'2\';\n' +
+                'service cloud.firestore {\n' +
+                '  match /databases/{database}/documents {\n' +
+                '    match /cestas/{document=**} {\n' +
+                '      allow read, write: if true;\n' +
+                '    }\n' +
+                '    match /store_config/{document=**} {\n' +
+                '      allow read, write: if true;\n' +
+                '    }\n' +
+                '  }\n' +
+                '}\n\n' +
+                '3) Clique em "Publicar"\n\n' +
+                'Enquanto isso, a loja já está ' + (open ? '🟢 ABERTA' : '🛑 FECHADA') + ' no SEU navegador.');
+        } else {
+            alert('⚠️ Funcionou no SEU APARELHO.\n\nNão conseguimos sincronizar com o Firebase agora (sem internet?).\nA loja já está ' + (open ? '🟢 ABERTA' : '🛑 FECHADA') + ' para você. Quando a internet voltar, basta clicar em Salvar novamente para aplicar globalmente.\n\nErro técnico: ' + (err.message || String(err)));
+        }
     }
 }
 
@@ -1483,10 +1569,16 @@ function applyStoreStatusGlobal(status, meta) {
     const prev = storeOpenGlobal || { open: true };
     storeOpenGlobal = Object.assign({ open: true, reabre_em: '', mensagem_fechado: '' }, status || {});
     const doCache = !!(meta && meta.doCache);
+
+    /* Sempre salvamos no localStorage também: garante fallback offline e se Firestore não autorizar */
+    try { saveToStorage(STORAGE_KEYS.STORE_STATUS, storeOpenGlobal); } catch(_) {}
+
     if (doCache) {
         console.warn('[STATUS LOJA] Recebido DO CACHE LOCAL (aguardando confirmação do servidor)... status =', storeOpenGlobal.open ? 'ABERTA' : 'FECHADA');
     } else if (meta && meta.doServidor !== undefined) {
         console.log('[STATUS LOJA] Confirmado DIRETO DO SERVIDOR ✅ status =', storeOpenGlobal.open ? 'ABERTA' : 'FECHADA');
+    } else if (meta && meta.origem === 'localstorage') {
+        console.log('[STATUS LOJA] Aplicado do FALLBACK LOCAL (Firestore indisponível/permissão):', storeOpenGlobal.open ? 'ABERTA' : 'FECHADA');
     }
     renderStoreClosedBannerAndBadge();
     try { renderAdminStoreStatusTab(); } catch(_) {}
@@ -2751,11 +2843,47 @@ document.addEventListener('DOMContentLoaded', async function () {
     try {
         if (window.FirebaseAPI && typeof window.FirebaseAPI.subscribeStoreStatus === 'function') {
             window.FirebaseAPI.subscribeStoreStatus(
-                (status) => {
-                    console.log('[FIREBASE onSnapshot - LOJA] Status recebido:', status);
-                    applyStoreStatusGlobal(status);
+                (status, meta) => {
+                    const doServidor = !!(meta && meta.doServidor);
+                    const doCache = !!(meta && meta.doCache);
+                    const docExists = meta ? !!meta.docExists : (status !== null && status !== undefined);
+                    console.log('[FIREBASE onSnapshot - LOJA] Status recebido:', status, 'origem:', doServidor ? 'SERVIDOR' : (doCache ? 'CACHE FIRESTORE' : '?'), 'docExists=', docExists);
+
+                    /* CASO 1: Doc não existe no Firestore ainda (status=null).
+                       → Se temos localStorage, deixamos ele quieto (applyStoreStatusGlobal já foi no loadFromStorage)
+                       → Se NÃO temos localStorage, aplicamos default open=true */
+                    if (status === null || status === undefined) {
+                        const temStatusLocal = !!localStorage.getItem(STORAGE_KEYS.STORE_STATUS);
+                        if (!temStatusLocal) {
+                            applyStoreStatusGlobal({ open: true, reabre_em: '', mensagem_fechado: '' }, { origem: 'firestore_doc_nao_existe' });
+                        } else {
+                            console.log('[FIREBASE onSnapshot - LOJA] Doc store_config/status não existe no Firestore. Usando status LOCAL salvo.');
+                        }
+                        return;
+                    }
+
+                    /* CASO 2: Veio DO SERVIDOR (doc existe). SEMPRE sobrescreve o local — é a versão mais confiável */
+                    if (doServidor) {
+                        applyStoreStatusGlobal(status, meta);
+                        return;
+                    }
+
+                    /* CASO 3: Veio de cache do Firestore (sem chegar no servidor ainda).
+                       → Só aplica se NÃO tivermos nada salvo em localStorage, para evitar
+                         que um cache antigo sobrescreva uma alteração LOCAL recente. */
+                    const temStatusLocal = !!localStorage.getItem(STORAGE_KEYS.STORE_STATUS);
+                    if (!temStatusLocal) {
+                        applyStoreStatusGlobal(status, meta);
+                    } else {
+                        console.log('[FIREBASE onSnapshot - LOJA] Ignorado dado de cache Firestore — usando status LOCAL salvo.');
+                    }
                 },
-                (err) => console.warn('[FIREBASE onSnapshot - LOJA] Erro (assumimos loja aberta):', err)
+                (err) => {
+                    console.warn('[FIREBASE onSnapshot - LOJA] Erro (mantendo status LOCAL salvo, não voltamos para ABERTA automaticamente):', err);
+                    /* IMPORTANTE: NÃO chamamos applyStoreStatusGlobal com open=true aqui.
+                       Se houver erro de permissão ou conexão, mantemos o valor salvo no localStorage
+                       (que já foi carregado em loadFromStorage e aplicado via renderStoreClosedBannerAndBadge). */
+                }
             );
         }
     } catch(_) {}
