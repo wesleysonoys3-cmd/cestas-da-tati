@@ -3165,9 +3165,7 @@ button,
     }
 }
 
-/* ======================================================================
-   🌸🧸 Fundo com FLORES e URSINHOS caindo suavemente (FIXO em TUDO)
-   ====================================================================== */
+/* Fundo animado com ursinhos e flores — CAMADA MAIS INFERIOR POSSÍVEL */
 .falling-bg {
     position: fixed;
     inset: 0;
@@ -3175,8 +3173,28 @@ button,
     height: 100vh;
     pointer-events: none;
     overflow: hidden;
+    z-index: -999;
+}
+
+/* Garante que TODO conteúdo (inclusive product-card e grids) fica 100% clicável */
+body {
+    position: relative;
     z-index: 1;
 }
+.container, .hero, .header, .store-closed-banner, .cache-sync-indicator,
+.showcase, .footer, .cart-float, .modal, .admin-panel, .section-title,
+.product-grid, .product-card, .product-card-see-more, .product-card-body, .product-card-footer {
+    position: relative;
+    z-index: 3;
+    pointer-events: auto;
+}
+.product-card {
+    isolation: isolate;
+}
+
+/* ======================================================================
+   🌸🧸 Fundo com FLORES e URSINHOS caindo suavemente (FIXO atrás de tudo)
+   ====================================================================== */
 .falling-item {
     position: absolute;
     top: -15%;
@@ -3212,13 +3230,6 @@ button,
         transform: translateY(110vh) rotate(calc(var(--rot) * 2.1)) scale(0.95);
         opacity: 0;
     }
-}
-
-/* Garante que todo conteúdo FICA POR CIMA dos ursinhos/flores, mas eles ainda são visíveis através do fundo leve */
-.container, .hero, .header, .store-closed-banner, .cache-sync-indicator,
-.showcase, .footer, .cart-float, .modal, .admin-panel, .section-title {
-    position: relative;
-    z-index: 2;
 }
 
 /* ======================================================================

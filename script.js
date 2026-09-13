@@ -376,7 +376,6 @@ function renderProducts() {
     products.forEach(product => {
         const card = document.createElement('div');
         card.className = 'product-card';
-        card.addEventListener('click', () => openProductModal(product.id));
 
         const itemsHtml = product.items.slice(0, 5).map(i => `<li>${i}</li>`).join('') +
             (product.items.length > 5 ? `<li>...e mais ${product.items.length - 5} itens</li>` : '');
@@ -389,11 +388,29 @@ function renderProducts() {
                 <ul class="product-card-items">${itemsHtml}</ul>
                 <div class="product-card-footer">
                     <span class="product-card-price">${formatCurrency(product.price)}</span>
-                    <button class="product-card-see-more">Ver mais</button>
+                    <button type="button" data-product-id="${product.id}" class="product-card-see-more" style="pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;">Ver mais</button>
                 </div>
             </div>
         `;
         grid.appendChild(card);
+
+        /* Event listener DIRETO NO BOTÃO "Ver mais" (melhor garantia) */
+        const btn = card.querySelector('.product-card-see-more');
+        if (btn) {
+            const trigger = (e) => {
+                if (e) {
+                    try { e.stopPropagation(); e.preventDefault(); } catch(_) {}
+                }
+                openProductModal(product.id);
+            };
+            btn.addEventListener('click', trigger, { capture: true, passive: false });
+            btn.addEventListener('touchend', trigger, { passive: false });
+        }
+        /* Fallback: clicar na foto do card também abre */
+        const img = card.querySelector('.product-image');
+        if (img) {
+            img.addEventListener('click', () => openProductModal(product.id));
+        }
     });
 }
 
@@ -632,38 +649,49 @@ function renderDeliveryOptions() {
 }
 
 function openProductModal(productId) {
-    selectedProduct = products.find(p => p.id === productId);
-    if (!selectedProduct) return;
-
-    modalQty = 1;
-    modalSelectedAddons = [];
-
-    document.getElementById('modalProductImage').src = selectedProduct.image;
-    document.getElementById('modalProductImage').alt = selectedProduct.name;
-    document.getElementById('modalProductName').textContent = selectedProduct.name;
-    document.getElementById('modalProductDescription').textContent = selectedProduct.description || '';
-    document.getElementById('modalProductItems').innerHTML = `
-        <h4 class="addons-title" style="margin-bottom:10px;">📦 Itens inclusos</h4>
-        <ul>${selectedProduct.items.map(i => `<li>${i}</li>`).join('')}</ul>
-    `;
-    document.getElementById('notesField').value = '';
-
-    renderAddonsList();
-    updateModalUI();
-
-    /* LOJA FECHADA: aplica desabilita no botão de adicionar ao carrinho */
     try {
-        const btn = document.getElementById('addToCartBtn');
-        if (btn) {
-            const oldText = btn.textContent || '';
-            disableCartWhenClosed(btn, null);
-            if (!storeOpenGlobal.open && !btn.hasAttribute('data-title-old')) {
-                btn.setAttribute('data-title-old', oldText);
-            }
+        selectedProduct = products.find(p => p.id === productId);
+        if (!selectedProduct) {
+            console.error('[openProductModal] Produto nao encontrado. ID=', productId, 'Total produtos=', products?.length);
+            alert('Ops, essa cesta não foi encontrada. Tente daqui a pouquinho! 💗');
+            return;
         }
-    } catch(_) {}
 
-    openModal('productModal');
+        modalQty = 1;
+        modalSelectedAddons = [];
+
+        document.getElementById('modalProductImage').src = selectedProduct.image || '';
+        document.getElementById('modalProductImage').alt = selectedProduct.name || 'Cesta';
+        document.getElementById('modalProductName').textContent = selectedProduct.name || '';
+        document.getElementById('modalProductDescription').textContent = selectedProduct.description || '';
+        document.getElementById('modalProductItems').innerHTML = `
+            <h4 class="addons-title" style="margin-bottom:10px;">📦 Itens inclusos</h4>
+            <ul>${(selectedProduct.items || []).map(i => `<li>${i}</li>`).join('')}</ul>
+        `;
+        const notes = document.getElementById('notesField');
+        if (notes) notes.value = '';
+
+        try { renderAddonsList(); } catch(err) { console.error(err); }
+        try { updateModalUI(); } catch(err) { console.error(err); }
+
+        /* LOJA FECHADA: aplica desabilita no botão de adicionar ao carrinho */
+        try {
+            const btn = document.getElementById('addToCartBtn');
+            if (btn) {
+                const oldText = btn.textContent || '';
+                disableCartWhenClosed(btn, null);
+                if (!storeOpenGlobal.open && !btn.hasAttribute('data-title-old')) {
+                    btn.setAttribute('data-title-old', oldText);
+                }
+            }
+        } catch(_) {}
+
+        console.log('[openProductModal] Abrindo modal produto ID=', productId);
+        openModal('productModal');
+    } catch (err) {
+        console.error('[openProductModal] ERRO CRITICO:', err);
+        alert('Ops, ocorreu um erro ao abrir a cesta. Atualize a página e tente novamente 💗');
+    }
 }
 
 function renderAddonsList() {
@@ -1940,19 +1968,26 @@ function deleteEntity(entity, id) {
 }
 
 function openModal(modalId) {
-    /* Sempre sobe pro topo do modal e do body antes de abrir — evita modal "la pra baixo" */
     try {
         const modalEl = document.getElementById(modalId);
-        if (modalEl) {
-            const content = modalEl.querySelector('.modal-content');
-            if (content) content.scrollTop = 0;
+        if (!modalEl) {
+            console.error('[openModal] Nao encontrei #'+modalId+' no DOM');
+            return;
         }
-    } catch(_) {}
-    try {
-        if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'auto' });
-    } catch(_) {}
-
-    document.getElementById(modalId).classList.add('active');
+        /* Garante que o CONTEÚDO INTERNO do modal sempre comece no topo */
+        const content = modalEl.querySelector('.modal-content');
+        if (content) {
+            content.scrollTop = 0;
+            try { content.scrollTo({ top: 0, behavior: 'auto' }); } catch(_) {}
+        }
+        modalEl.classList.remove('active'); /* remove classe antes para resetar animação */
+        /* força reflow */
+        void modalEl.offsetWidth;
+        modalEl.classList.add('active');
+        console.log('[openModal] Aberto: #'+modalId);
+    } catch (err) {
+        console.error('[openModal] erro:', err);
+    }
     document.body.style.overflow = 'hidden';
     document.body.style.touchAction = 'none'; /* iOS Safari: bloqueia scroll por trás do modal */
 }
