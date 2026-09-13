@@ -3165,73 +3165,6 @@ button,
     }
 }
 
-/* Fundo animado com ursinhos e flores — CAMADA MAIS INFERIOR POSSÍVEL */
-.falling-bg {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100vh;
-    pointer-events: none;
-    overflow: hidden;
-    z-index: -999;
-}
-
-/* Garante que TODO conteúdo (inclusive product-card e grids) fica 100% clicável */
-body {
-    position: relative;
-    z-index: 1;
-}
-.container, .hero, .header, .store-closed-banner, .cache-sync-indicator,
-.showcase, .footer, .cart-float, .modal, .admin-panel, .section-title,
-.product-grid, .product-card, .product-card-see-more, .product-card-body, .product-card-footer {
-    position: relative;
-    z-index: 3;
-    pointer-events: auto;
-}
-.product-card {
-    isolation: isolate;
-}
-
-/* ======================================================================
-   🌸🧸 Fundo com FLORES e URSINHOS caindo suavemente (FIXO atrás de tudo)
-   ====================================================================== */
-.falling-item {
-    position: absolute;
-    top: -15%;
-    left: var(--x);
-    font-size: var(--sz);
-    line-height: 1;
-    filter: drop-shadow(0 4px 8px rgba(138, 60, 109, 0.18));
-    animation: fallDown var(--dur) linear var(--del) infinite;
-    transform: rotate(var(--rot));
-    opacity: 0.85;
-    will-change: transform;
-}
-.falling-item:nth-child(3n) { filter: drop-shadow(0 3px 7px rgba(236, 72, 153, 0.22)); }
-.falling-item:nth-child(7n) { opacity: 0.75; }
-
-@keyframes fallDown {
-    0% {
-        transform: translateY(-8vh) rotate(var(--rot)) scale(0.85);
-        opacity: 0;
-    }
-    10% {
-        opacity: 0.9;
-        transform: translateY(8vh) rotate(calc(var(--rot) * 0.6)) scale(1);
-    }
-    50% {
-        transform: translateY(60vh) rotate(calc(var(--rot) * 1.3)) scale(1.05);
-        opacity: 0.95;
-    }
-    90% {
-        opacity: 0.5;
-    }
-    100% {
-        transform: translateY(110vh) rotate(calc(var(--rot) * 2.1)) scale(0.95);
-        opacity: 0;
-    }
-}
-
 /* ======================================================================
    💬📷📘 Ícones REDES SOCIAIS no HEADER (SVG oficiais + brilho premium)
    ====================================================================== */
@@ -3576,9 +3509,14 @@ body {
     .hero-leaf { opacity: .85; }
 }
 
-/* Reduz intensidade ursinhos/flores no mobile (não polui tela pequena) */
-@media (max-width: 640px) {
-    .falling-item { opacity: 0.55; }
-    .falling-item:nth-child(3n),
-    .falling-item:nth-child(7n) { opacity: 0.4; }
-}
+/* ======================================================================
+   🔝 Z-INDEX GLOBAL (garante modais e admin SEMPRE abrem por cima)
+   ====================================================================== */
+.cart-float       { z-index: 80  !important; }
+.btn-admin-link   { z-index: 90  !important; position: relative; }
+.admin-panel      { z-index: 99999 !important; position: fixed; }
+.admin-tabs       { position: relative; z-index: 2; }
+.admin-modal-bg,
+.modal            { z-index: 99999 !important; }
+.cache-sync-indicator { z-index: 99998 !important; }
+.store-closed-banner  { z-index: 95 !important; }
